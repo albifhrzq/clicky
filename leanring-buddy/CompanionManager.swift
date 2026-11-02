@@ -70,7 +70,13 @@ final class CompanionManager: ObservableObject {
 
     /// Base URL for the Cloudflare Worker proxy. All API requests route
     /// through this so keys never ship in the app binary.
-    private static let workerBaseURL = "https://your-worker-name.your-subdomain.workers.dev"
+    private static var workerBaseURL: String {
+        ClickyConfiguration.shared.workerBaseURL
+    }
+
+    private lazy var unifiedLLMClient: UnifiedLLMClient = {
+        return UnifiedLLMClient()
+    }()
 
     private lazy var claudeAPI: ClaudeAPI = {
         return ClaudeAPI(proxyURL: "\(Self.workerBaseURL)/chat", model: selectedModel)
@@ -610,7 +616,7 @@ final class CompanionManager: ObservableObject {
                     (userPlaceholder: entry.userTranscript, assistantResponse: entry.assistantResponse)
                 }
 
-                let (fullResponseText, _) = try await claudeAPI.analyzeImageStreaming(
+                let (fullResponseText, _) = try await unifiedLLMClient.analyzeImageStreaming(
                     images: labeledImages,
                     systemPrompt: Self.companionVoiceResponseSystemPrompt,
                     conversationHistory: historyForAPI,
@@ -982,7 +988,7 @@ final class CompanionManager: ObservableObject {
                 let dimensionInfo = " (image dimensions: \(cursorScreenCapture.screenshotWidthInPixels)x\(cursorScreenCapture.screenshotHeightInPixels) pixels)"
                 let labeledImages = [(data: cursorScreenCapture.imageData, label: cursorScreenCapture.label + dimensionInfo)]
 
-                let (fullResponseText, _) = try await claudeAPI.analyzeImageStreaming(
+                let (fullResponseText, _) = try await unifiedLLMClient.analyzeImageStreaming(
                     images: labeledImages,
                     systemPrompt: Self.onboardingDemoSystemPrompt,
                     userPrompt: "look around my screen and find something interesting to point at",

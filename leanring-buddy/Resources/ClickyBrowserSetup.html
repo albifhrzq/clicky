@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HeyClicky needs Chrome</title>
+<!-- Shown only when setup finds no Chromium browser on this Mac. Self-contained: it opens as a file:// page outside
+     the extension. Drawn in the notch's look (the extension's ui.css): black, the ⌃⌥ mark, the aqua gel button. -->
+<style>
+  :root { color-scheme: dark; --label: #ECECEF; --secondary: #9093A0; --tertiary: #5C5E6A; --hair: rgba(255,255,255,.08); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #000; color: var(--label); }
+  body { min-height: 100vh; display: grid; place-items: center; padding-block: 40px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px));
+    background: radial-gradient(720px 420px at 50% -80px, rgba(46,104,214,.22), transparent 70%), #000;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { width: min(440px, 100%); text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .mark { width: 56px; height: 36.17px; color: #fff; }
+  .mark path { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  h1 { margin-top: 22px; font-size: 26px; font-weight: 650; letter-spacing: -.02em; line-height: 1.15; text-wrap: balance; }
+  p { margin-top: 10px; color: var(--secondary); text-wrap: pretty; }
+  p strong { color: var(--label); font-weight: 600; }
+  .browsers { margin-top: 22px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .browsers span { padding: 5px 11px; border-radius: 999px; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px var(--hair); font-size: 12px; color: var(--secondary); }
+  .gel { position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; margin-top: 26px; min-height: 34px; padding: 8px 22px; border-radius: 17px;
+    font: 600 13.5px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: #000; text-decoration: none; text-shadow: 0 1.5px 1px rgba(255,255,255,.8);
+    background: linear-gradient(#EDF4FF 0%, #D6E7FF 18%, #A2C7FF 50%, #99CBF8 80%, #A2D2F7 100%); border: 1px solid #221898; box-shadow: 0 4px 10px rgba(0,0,0,.11); transition: transform .15s ease-out; }
+  .gel::before { content: ""; position: absolute; z-index: -1; left: 12px; right: 12px; top: 3px; height: 8px; border-radius: 999px; background: linear-gradient(rgba(255,255,255,.85), rgba(255,255,255,.02)); }
+  .gel::after { content: ""; position: absolute; z-index: -1; left: 4px; right: 4px; bottom: 2px; height: 13px; border-radius: 999px; background: linear-gradient(transparent, rgba(67,90,135,.26)); }
+  .gel:hover { transform: scale(1.03); }
+  .gel:focus-visible { outline: 2px solid #8EC5FF; outline-offset: 3px; }
+  small { display: block; margin-top: 18px; font-size: 12px; color: var(--tertiary); }
+  @media (prefers-reduced-motion: reduce) { .gel { transition: none; } }
+</style>
+<main>
+  <svg class="mark" viewBox="0 0 48 31" aria-hidden="true"><path d="M24.3 23.3L33.4 23.3"/><path d="M9.5 12.4L14.5 6.5L24.3 23.3"/><path d="M27.1 12.4L32.86 6.5L38.4 12.4"/></svg>
+  <h1>HeyClicky works in Chrome</h1>
+  <p>HeyClicky’s browser connection needs Chrome or another Chrome-based browser. Install one, then open HeyClicky → <strong>Settings → Integrations → Chrome</strong> and add HeyClicky’s extension from the Chrome Web Store.</p>
+  <div class="browsers" aria-label="Browsers that work"><span>Chrome</span><span>Brave</span><span>Edge</span><span>Arc</span></div>
+  <a class="gel" href="https://www.google.com/chrome/">Get Chrome</a>
+  <small>HeyClicky uses your browser only for tasks you ask for.</small>
+</main>
+</html>

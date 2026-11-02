@@ -13,6 +13,9 @@ import SwiftUI
 struct CompanionPanelView: View {
     @ObservedObject var companionManager: CompanionManager
     @State private var emailInput: String = ""
+    @State private var showConnectionSettings: Bool = false
+    @ObservedObject private var config = ClickyConfiguration.shared
+    @ObservedObject private var openCodex = OpenCodexService.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,6 +23,15 @@ struct CompanionPanelView: View {
             Divider()
                 .background(DS.Colors.borderSubtle)
                 .padding(.horizontal, 16)
+
+            if showConnectionSettings {
+                connectionSettingsSection
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                Divider()
+                    .background(DS.Colors.borderSubtle)
+                    .padding(.horizontal, 16)
+            }
 
             permissionsCopySection
                 .padding(.top, 16)
@@ -102,6 +114,23 @@ struct CompanionPanelView: View {
             Text(statusText)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(DS.Colors.textTertiary)
+
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showConnectionSettings.toggle()
+                }
+            }) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(showConnectionSettings ? DS.Colors.accent : DS.Colors.textTertiary)
+                    .frame(width: 20, height: 20)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.08))
+                    )
+            }
+            .buttonStyle(.plain)
+            .pointerCursor()
 
             Button(action: {
                 NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
@@ -606,20 +635,233 @@ struct CompanionPanelView: View {
 
             Spacer()
 
-            HStack(spacing: 0) {
-                modelOptionButton(label: "Sonnet", modelID: "claude-sonnet-4-6")
-                modelOptionButton(label: "Opus", modelID: "claude-opus-4-6")
+            if config.mode == .openCodex {
+                Menu {
+                    ForEach(openCodex.availableModels, id: \.id) { model in
+                        Button(action: {
+                            config.selectedModel = model.id
+                            companionManager.setSelectedModel(model.id)
+                        }) {
+                            if config.selectedModel == model.id {
+                                Label(model.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(model.displayName)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(shortModelName(config.selectedModel))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(DS.Colors.textPrimary)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9))
+                            .foregroundColor(DS.Colors.textTertiary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
+                }
+                .menuStyle(.borderlessButton)
+            } else {
+                HStack(spacing: 0) {
+                    modelOptionButton(label: "Sonnet", modelID: "claude-sonnet-4-6")
+                    modelOptionButton(label: "Opus", modelID: "claude-opus-4-6")
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
+                )
             }
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
-            )
         }
         .padding(.vertical, 4)
+    }
+
+    private func shortModelName(_ fullID: String) -> String {
+        if fullID.contains("/") {
+            return String(fullID.split(separator: "/").last ?? "")
+        }
+        return fullID
+    }
+
+    // MARK: - Connection & Provider Settings
+
+    private var connectionSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("CONNECTION & PROVIDER")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(DS.Colors.textTertiary)
+                .padding(.top, 4)
+
+            Picker("Mode", selection: $config.mode) {
+                ForEach(ClickyConnectionMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+            .font(.system(size: 12))
+
+            switch config.mode {
+            case .openCodex:
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Circle()
+                            .fill(openCodex.isHealthy ? DS.Colors.success : DS.Colors.warning)
+                            .frame(width: 8, height: 8)
+                        Text(openCodex.isHealthy ? "Proxy Online (\(openCodex.latencyMs)ms)" : "Proxy Offline (127.0.0.1:10100)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(openCodex.isHealthy ? DS.Colors.success : DS.Colors.warning)
+
+                        Spacer()
+
+                        Button(action: {
+                            Task { await openCodex.refresh() }
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10))
+                                .foregroundColor(DS.Colors.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    HStack {
+                        Text("URL:")
+                            .font(.system(size: 11))
+                            .foregroundColor(DS.Colors.textTertiary)
+                            .frame(width: 40, alignment: .leading)
+                        TextField("http://127.0.0.1:10100/v1", text: $config.openCodexBaseURL)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .padding(4)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(4)
+                    }
+
+                    HStack {
+                        Text("Token:")
+                            .font(.system(size: 11))
+                            .foregroundColor(DS.Colors.textTertiary)
+                            .frame(width: 40, alignment: .leading)
+                        SecureField("Optional Bearer Token", text: $config.openCodexAPIKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .padding(4)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(4)
+                    }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.03)))
+
+            case .byok:
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Anthropic:")
+                            .font(.system(size: 10))
+                            .foregroundColor(DS.Colors.textTertiary)
+                            .frame(width: 65, alignment: .leading)
+                        SecureField("sk-ant-...", text: $config.anthropicAPIKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10))
+                            .padding(4)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(4)
+                    }
+
+                    HStack {
+                        Text("OpenAI:")
+                            .font(.system(size: 10))
+                            .foregroundColor(DS.Colors.textTertiary)
+                            .frame(width: 65, alignment: .leading)
+                        SecureField("sk-...", text: $config.openaiAPIKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10))
+                            .padding(4)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(4)
+                    }
+
+                    HStack {
+                        Text("ElevenLabs:")
+                            .font(.system(size: 10))
+                            .foregroundColor(DS.Colors.textTertiary)
+                            .frame(width: 65, alignment: .leading)
+                        SecureField("xi-...", text: $config.elevenLabsAPIKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10))
+                            .padding(4)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(4)
+                    }
+
+                    HStack {
+                        Text("AssemblyAI:")
+                            .font(.system(size: 10))
+                            .foregroundColor(DS.Colors.textTertiary)
+                            .frame(width: 65, alignment: .leading)
+                        SecureField("Key...", text: $config.assemblyAIAPIKey)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10))
+                            .padding(4)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(4)
+                    }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.03)))
+
+            case .cloudflareWorker:
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Worker Proxy URL:")
+                        .font(.system(size: 10))
+                        .foregroundColor(DS.Colors.textTertiary)
+                    TextField("https://api.heyclicky.com", text: $config.workerBaseURL)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                        .padding(4)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(4)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.03)))
+
+            case .nativeAntigravity:
+                VStack(alignment: .leading, spacing: 6) {
+                    if AntigravityOAuthManager.shared.isAuthenticated {
+                        HStack {
+                            Circle().fill(DS.Colors.success).frame(width: 8, height: 8)
+                            Text("Signed in: \(AntigravityOAuthManager.shared.userEmail ?? "Google Account")")
+                                .font(.system(size: 11))
+                                .foregroundColor(DS.Colors.textPrimary)
+                        }
+                        Button("Sign Out") {
+                            AntigravityOAuthManager.shared.signOut()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundColor(DS.Colors.warning)
+                    } else {
+                        Text("Direct OAuth with Google Cloud Code Assist")
+                            .font(.system(size: 11))
+                            .foregroundColor(DS.Colors.textTertiary)
+                    }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.03)))
+            }
+
+            Toggle("Tactile Sound Effects", isOn: $config.soundEffectsEnabled)
+                .font(.system(size: 11))
+                .foregroundColor(DS.Colors.textSecondary)
+        }
     }
 
     private func modelOptionButton(label: String, modelID: String) -> some View {

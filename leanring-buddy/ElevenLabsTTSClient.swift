@@ -3,8 +3,8 @@
 //  leanring-buddy
 //
 //  Streams text-to-speech audio from ElevenLabs and plays it back
-//  through the system audio output. Uses the streaming endpoint so
-//  playback begins before the full audio has been generated.
+//  through the system audio output. Supports both Direct API Key (BYOK)
+//  and Cloudflare Worker proxy mode.
 //
 
 import AVFoundation
@@ -12,15 +12,18 @@ import Foundation
 
 @MainActor
 final class ElevenLabsTTSClient {
-    private let proxyURL: URL
+    private let proxyURL: URL?
     private let session: URLSession
 
-    /// The audio player for the current TTS playback. Kept alive so the
-    /// audio finishes playing even if the caller doesn't hold a reference.
+    /// The audio player for the current TTS playback.
     private var audioPlayer: AVAudioPlayer?
 
-    init(proxyURL: String) {
-        self.proxyURL = URL(string: proxyURL)!
+    init(proxyURL: String? = nil) {
+        if let proxyURL = proxyURL, let url = URL(string: proxyURL) {
+            self.proxyURL = url
+        } else {
+            self.proxyURL = nil
+        }
 
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
@@ -29,12 +32,37 @@ final class ElevenLabsTTSClient {
     }
 
     /// Sends `text` to ElevenLabs TTS and plays the resulting audio.
-    /// Throws on network or decoding errors. Cancellation-safe.
     func speakText(_ text: String) async throws {
-        var request = URLRequest(url: proxyURL)
+        let config = ClickyConfiguration.shared
+
+        // Determine destination: Direct API Key vs Proxy
+        let url: URL
+        var apiKey: String? = nil
+
+        if !config.elevenLabsAPIKey.isEmpty {
+            // Direct ElevenLabs API (BYOK)
+            let voiceID = config.elevenLabsVoiceID.isEmpty ? "kPzsL2i3teMYv0FxEYQ6" : config.elevenLabsVoiceID
+            guard let directURL = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)") else {
+                throw URLError(.badURL)
+            }
+            url = directURL
+            apiKey = config.elevenLabsAPIKey
+        } else if let proxy = proxyURL {
+            url = proxy
+        } else if let fallbackProxy = URL(string: "\(config.workerBaseURL)/tts") {
+            url = fallbackProxy
+        } else {
+            throw NSError(domain: "ElevenLabsTTS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No TTS endpoint or API Key configured."])
+        }
+
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
+
+        if let key = apiKey {
+            request.setValue(key, forHTTPHeaderField: "xi-api-key")
+        }
 
         let body: [String: Any] = [
             "text": text,

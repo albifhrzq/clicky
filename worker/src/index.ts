@@ -50,11 +50,19 @@ export default {
 
 async function handleChat(request: Request, env: Env): Promise<Response> {
   const body = await request.text();
+  const clientApiKey = request.headers.get("x-api-key") || env.ANTHROPIC_API_KEY;
+
+  if (!clientApiKey) {
+    return new Response(JSON.stringify({ error: "Missing Anthropic API key in header or worker env" }), {
+      status: 401,
+      headers: { "content-type": "application/json" }
+    });
+  }
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "x-api-key": env.ANTHROPIC_API_KEY,
+      "x-api-key": clientApiKey,
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
@@ -108,14 +116,22 @@ async function handleTranscribeToken(env: Env): Promise<Response> {
 
 async function handleTTS(request: Request, env: Env): Promise<Response> {
   const body = await request.text();
-  const voiceId = env.ELEVENLABS_VOICE_ID;
+  const clientApiKey = request.headers.get("xi-api-key") || env.ELEVENLABS_API_KEY;
+  const voiceId = request.headers.get("x-voice-id") || env.ELEVENLABS_VOICE_ID || "kPzsL2i3teMYv0FxEYQ6";
+
+  if (!clientApiKey) {
+    return new Response(JSON.stringify({ error: "Missing ElevenLabs API key in header or worker env" }), {
+      status: 401,
+      headers: { "content-type": "application/json" }
+    });
+  }
 
   const response = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
     {
       method: "POST",
       headers: {
-        "xi-api-key": env.ELEVENLABS_API_KEY,
+        "xi-api-key": clientApiKey,
         "content-type": "application/json",
         accept: "audio/mpeg",
       },

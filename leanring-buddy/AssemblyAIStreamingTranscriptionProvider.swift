@@ -57,10 +57,26 @@ final class AssemblyAIStreamingTranscriptionProvider: BuddyTranscriptionProvider
         return session
     }
 
-    /// Calls the Cloudflare Worker to get a short-lived AssemblyAI token.
+    /// Calls AssemblyAI or the Cloudflare Worker to get a short-lived AssemblyAI token.
     private func fetchTemporaryToken() async throws -> String {
-        var request = URLRequest(url: URL(string: Self.tokenProxyURL)!)
+        let config = ClickyConfiguration.shared
+        let url: URL
+        var apiKey: String? = nil
+
+        if !config.assemblyAIAPIKey.isEmpty {
+            url = URL(string: "https://api.assemblyai.com/v2/realtime/token?expires_in=480")!
+            apiKey = config.assemblyAIAPIKey
+        } else {
+            let workerURL = "\(config.workerBaseURL)/transcribe-token"
+            url = URL(string: workerURL) ?? URL(string: Self.tokenProxyURL)!
+        }
+
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let key = apiKey {
+            request.setValue(key, forHTTPHeaderField: "Authorization")
+        }
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
