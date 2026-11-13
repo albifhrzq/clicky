@@ -12,9 +12,9 @@ import Combine
 import Foundation
 import SwiftUI
 
-public struct HomeSpaceView: View {
-    @ObservedObject public var companionManager: CompanionManager
-    public let onOpenSettings: (() -> Void)?
+struct HomeSpaceView: View {
+    @ObservedObject var companionManager: CompanionManager
+    let onOpenSettings: (() -> Void)?
 
     @ObservedObject private var roster = ClickyRoster.shared
     @ObservedObject private var jobStore = ClickyJobStore.shared
@@ -28,16 +28,16 @@ public struct HomeSpaceView: View {
     @State private var hoveredClickySlug: String?
     @State private var hoveredRoutineID: String?
 
-    public enum JobFilter: String, CaseIterable, Identifiable {
+    enum JobFilter: String, CaseIterable, Identifiable {
         case all = "All"
         case active = "Active"
         case needsYou = "Needs You"
         case done = "Done"
 
-        public var id: String { rawValue }
+        var id: String { rawValue }
     }
 
-    public init(
+    init(
         companionManager: CompanionManager,
         onOpenSettings: (() -> Void)? = nil
     ) {
@@ -45,7 +45,7 @@ public struct HomeSpaceView: View {
         self.onOpenSettings = onOpenSettings
     }
 
-    public var body: some View {
+    var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DS.Spacing.xl) {
                 homeHeader

@@ -221,10 +221,10 @@ public enum ClickyDrawFontRegistry {
         }
 
         if lower.contains("georgia") || lower.contains("serif") {
+            if weight >= 600, let boldSerif = NSFont(name: "Georgia-Bold", size: clampedSize) {
+                return boldSerif as CTFont
+            }
             if let serif = NSFont(name: "Georgia", size: clampedSize) {
-                if weight >= 600 {
-                    return NSFontManager.shared.convert(serif, toHaveFontTrait: .boldFontMask) as CTFont
-                }
                 return serif as CTFont
             }
         }
