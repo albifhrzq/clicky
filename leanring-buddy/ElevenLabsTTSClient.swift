@@ -8,10 +8,17 @@
 //
 
 import AVFoundation
+import Combine
 import Foundation
 
+extension Notification.Name {
+    static let clickyElevenLabsPlaybackDidFinish = Notification.Name("ClickyElevenLabsPlaybackDidFinish")
+}
+
 @MainActor
-final class ElevenLabsTTSClient: NSObject, AVSpeechSynthesizerDelegate {
+final class ElevenLabsTTSClient: NSObject, ObservableObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
+    static let shared = ElevenLabsTTSClient()
+
     private let fallbackProxyURL: URL?
     private let session: URLSession
 
@@ -19,6 +26,10 @@ final class ElevenLabsTTSClient: NSObject, AVSpeechSynthesizerDelegate {
     private var audioPlayer: AVAudioPlayer?
     private let systemSpeechSynthesizer = AVSpeechSynthesizer()
     private var isSystemSpeechPlaying = false
+
+    @Published private(set) var isTestingVoice = false
+    @Published private(set) var lastStatusMessage: String?
+    @Published private(set) var lastErrorMessage: String?
 
     init(proxyURL: String? = nil) {
         if let proxyURL = proxyURL, let url = URL(string: proxyURL) {
@@ -50,21 +61,25 @@ final class ElevenLabsTTSClient: NSObject, AVSpeechSynthesizerDelegate {
             let voiceID = config.elevenLabsVoiceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "kPzsL2i3teMYv0FxEYQ6"
                 : config.elevenLabsVoiceID.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let directURL = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)") else {
+            guard let directURL = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=mp3_44100_128") else {
                 throw URLError(.badURL)
             }
             url = directURL
             apiKey = trimmedDirectKey
-        } else if let dynamicWorkerURL = dynamicWorkerEndpointURL(from: config.workerBaseURL) {
+        } else if config.mode == .cloudflareWorker,
+                  let dynamicWorkerURL = dynamicWorkerEndpointURL(from: config.workerBaseURL) {
             url = dynamicWorkerURL
-        } else if let fallbackProxyURL {
+        } else if config.mode == .cloudflareWorker, let fallbackProxyURL {
             url = fallbackProxyURL
         } else {
             if allowSystemFallback {
                 speakWithSystemFallback(text, languageCode: config.selectedVoiceLanguage)
                 return
             }
-            throw NSError(domain: "ElevenLabsTTS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No TTS endpoint or API Key configured."])
+            let err = NSError(domain: "ElevenLabsTTS", code: -1, userInfo: [NSLocalizedDescriptionKey: "ElevenLabs API key belum diisi."])
+            lastErrorMessage = err.localizedDescription
+            lastStatusMessage = nil
+            throw err
         }
 
         do {
@@ -104,20 +119,56 @@ final class ElevenLabsTTSClient: NSObject, AVSpeechSynthesizerDelegate {
             try Task.checkCancellation()
 
             stopPlayback()
-            let player = try AVAudioPlayer(data: data)
+            let player: AVAudioPlayer
+            do {
+                player = try AVAudioPlayer(data: data, fileTypeHint: AVFileType.mp3.rawValue)
+            } catch {
+                player = try AVAudioPlayer(data: data)
+            }
+            player.delegate = self
+            player.volume = 1.0
             self.audioPlayer = player
             player.prepareToPlay()
-            player.play()
-            print("🔊 ElevenLabs TTS: playing \(data.count / 1024)KB audio")
+            guard player.play() else {
+                throw NSError(
+                    domain: "ElevenLabsTTS",
+                    code: -2,
+                    userInfo: [NSLocalizedDescriptionKey: "AVAudioPlayer failed to start MP3 playback (\(data.count) bytes)."]
+                )
+            }
+            let kbString = String(format: "%.1f", Double(data.count) / 1024.0)
+            let activeVoice = config.elevenLabsVoiceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "kPzsL2i3teMYv0FxEYQ6"
+                : config.elevenLabsVoiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            lastErrorMessage = nil
+            lastStatusMessage = "Playing ElevenLabs (\(activeVoice), \(kbString) KB)"
+            print("🔊 ElevenLabs TTS: playing \(kbString)KB audio [voice=\(activeVoice)]")
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            lastErrorMessage = error.localizedDescription
+            lastStatusMessage = nil
             if allowSystemFallback {
                 print("⚠️ ElevenLabs TTS failed (\(error.localizedDescription)); using local AVSpeechSynthesizer fallback")
                 speakWithSystemFallback(text, languageCode: config.selectedVoiceLanguage)
                 return
             }
             throw error
+        }
+    }
+
+    /// Runs a quick voice test from Settings so users get immediate audio + HTTP status feedback.
+    func testVoice(sampleText: String = "Halo, suara ElevenLabs kamu sudah aktif dan siap digunakan.") async {
+        guard !isTestingVoice else { return }
+        isTestingVoice = true
+        defer { isTestingVoice = false }
+
+        do {
+            try await speakText(sampleText, allowSystemFallback: false)
+        } catch is CancellationError {
+            // Cancelled intentionally
+        } catch {
+            lastErrorMessage = error.localizedDescription
         }
     }
 
@@ -166,15 +217,37 @@ final class ElevenLabsTTSClient: NSObject, AVSpeechSynthesizerDelegate {
         isSystemSpeechPlaying = false
     }
 
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            if self?.audioPlayer === player {
+                self?.audioPlayer = nil
+            }
+            NotificationCenter.default.post(name: .clickyElevenLabsPlaybackDidFinish, object: nil)
+        }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        let description = error?.localizedDescription ?? "Unknown MP3 decode error"
+        Task { @MainActor [weak self] in
+            if self?.audioPlayer === player {
+                self?.audioPlayer = nil
+            }
+            self?.lastErrorMessage = "Audio decode error: \(description)"
+            NotificationCenter.default.post(name: .clickyElevenLabsPlaybackDidFinish, object: nil)
+        }
+    }
+
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
             self?.isSystemSpeechPlaying = false
+            NotificationCenter.default.post(name: .clickyElevenLabsPlaybackDidFinish, object: nil)
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
             self?.isSystemSpeechPlaying = false
+            NotificationCenter.default.post(name: .clickyElevenLabsPlaybackDidFinish, object: nil)
         }
     }
 

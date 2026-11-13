@@ -214,6 +214,7 @@ private enum BuddyDictationStartSource {
     case keyboardShortcut
     case systemWideHold
     case systemWideHandsFree
+    case wakeWord
 }
 
 private struct BuddyDictationDraftCallbacks {
@@ -306,6 +307,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     @Published private(set) var isKeyboardShortcutSessionActiveOrFinalizing = false
     @Published private(set) var isSystemWideDictationActive = false
     @Published private(set) var isHandsFreeDictationActive = false
+    @Published private(set) var isWakeWordRecording = false
     @Published private(set) var isFinalizingTranscript = false
     @Published private(set) var isPreparingToRecord = false
     @Published private(set) var currentAudioPowerLevel: CGFloat = 0
@@ -330,11 +332,15 @@ final class BuddyDictationManager: NSObject, ObservableObject {
             || isRecordingFromMicrophoneButton
             || isRecordingFromKeyboardShortcut
             || isSystemWideDictationActive
+            || isWakeWordRecording
             || isFinalizingTranscript
     }
 
     var isActivelyRecordingAudio: Bool {
-        isRecordingFromMicrophoneButton || isRecordingFromKeyboardShortcut || isSystemWideDictationActive
+        isRecordingFromMicrophoneButton
+            || isRecordingFromKeyboardShortcut
+            || isSystemWideDictationActive
+            || isWakeWordRecording
     }
 
     var isMicrophoneButtonActivelyRecordingAudio: Bool {
@@ -371,6 +377,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     private var contextualKeyterms: [String] = []
     private var lastRecordedAudioPowerSampleDate = Date.distantPast
     private var activePermissionRequestTask: Task<Bool, Never>?
+    private var wakeSilenceMonitorTask: Task<Void, Never>?
     private var shortcutMonitorCancellable: AnyCancellable?
     nonisolated(unsafe) private var sleepObserver: NSObjectProtocol?
     /// Timestamp of the last completed permission request, used to debounce
@@ -461,6 +468,90 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         )
     }
 
+    /// Starts a hands-free voice turn triggered by the wake word listener and
+    /// automatically stops & submits after a brief silence once the user finishes speaking.
+    func startWakeTriggeredCapture(
+        initialTrailingText: String,
+        submitDraftText: @escaping (String) -> Void
+    ) async {
+        guard !isDictationInProgress else { return }
+
+        let trimmedTrailing = initialTrailingText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        await startPushToTalk(
+            startSource: .wakeWord,
+            currentDraftText: trimmedTrailing,
+            updateDraftText: { _ in },
+            submitDraftText: submitDraftText,
+            shouldAutomaticallySubmitFinalDraftOnStop: true
+        )
+
+        guard isWakeWordRecording else { return }
+        startWakeSilenceMonitor(hasInitialTrailingText: !trimmedTrailing.isEmpty)
+    }
+
+    private func startWakeSilenceMonitor(hasInitialTrailingText: Bool) {
+        wakeSilenceMonitorTask?.cancel()
+        wakeSilenceMonitorTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let startedAt = Date()
+            var lastSpeechAt = startedAt
+            var lastTranscript = self.latestRecognizedText
+            var sawNewSpeech = hasInitialTrailingText
+
+            // Brief grace period before checking silence so mic warmup doesn't cut off early.
+            while !Task.isCancelled && self.isWakeWordRecording && !self.isFinalizingTranscript {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled && self.isWakeWordRecording && !self.isFinalizingTranscript else {
+                    return
+                }
+
+                let now = Date()
+                let elapsed = now.timeIntervalSince(startedAt)
+
+                if self.latestRecognizedText != lastTranscript {
+                    lastTranscript = self.latestRecognizedText
+                    if !lastTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        sawNewSpeech = true
+                        lastSpeechAt = now
+                    }
+                } else if self.currentAudioPowerLevel > 0.085 && elapsed > 0.25 {
+                    sawNewSpeech = true
+                    lastSpeechAt = now
+                }
+
+                let silenceSeconds = now.timeIntervalSince(lastSpeechAt)
+
+                if elapsed >= 25.0 {
+                    self.stopPushToTalk(expectedStartSource: .wakeWord)
+                    return
+                }
+
+                if sawNewSpeech {
+                    let threshold: TimeInterval = hasInitialTrailingText && self.latestRecognizedText.isEmpty ? 1.25 : 1.45
+                    if silenceSeconds >= threshold {
+                        if hasInitialTrailingText && self.latestRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            // User spoke the whole question in one breath right after wake word.
+                            let directQuestion = self.draftTextBeforeCurrentDictation.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let callbacks = self.draftCallbacks
+                            self.cancelCurrentDictation(preserveDraftText: false)
+                            if !directQuestion.isEmpty {
+                                callbacks?.submitDraftText(directQuestion)
+                            }
+                        } else {
+                            self.stopPushToTalk(expectedStartSource: .wakeWord)
+                        }
+                        return
+                    }
+                } else if silenceSeconds >= 6.5 {
+                    // User only said the wake word and stayed silent.
+                    self.cancelCurrentDictation(preserveDraftText: false)
+                    return
+                }
+            }
+        }
+    }
+
     func startSystemWideDictation(handsFree: Bool = false) async {
         let targetContext = Self.captureSystemWideTargetContext()
         activeSystemWideTargetContext = targetContext
@@ -500,6 +591,8 @@ final class BuddyDictationManager: NSObject, ObservableObject {
 
     func cancelCurrentDictation(preserveDraftText: Bool = true) {
         pendingStartRequestIdentifier = UUID()
+        wakeSilenceMonitorTask?.cancel()
+        wakeSilenceMonitorTask = nil
 
         guard isDictationInProgress else { return }
 
@@ -613,6 +706,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         isKeyboardShortcutSessionActiveOrFinalizing = startSource == .keyboardShortcut
         isSystemWideDictationActive = isSystemWideSource
         isHandsFreeDictationActive = startSource == .systemWideHandsFree
+        isWakeWordRecording = startSource == .wakeWord
         currentAudioPowerLevel = 0
         recordedAudioPowerHistory = Array(
             repeating: Self.recordedAudioPowerHistoryBaselineLevel,
@@ -668,7 +762,10 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         isRecordingFromKeyboardShortcut = false
         isSystemWideDictationActive = false
         isHandsFreeDictationActive = false
+        isWakeWordRecording = false
         isFinalizingTranscript = true
+        wakeSilenceMonitorTask?.cancel()
+        wakeSilenceMonitorTask = nil
 
         let finalTranscriptFallbackDelaySeconds = activeTranscriptionSession?.finalTranscriptFallbackDelaySeconds
             ?? Self.defaultFinalTranscriptFallbackDelaySeconds
@@ -1139,7 +1236,10 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         isKeyboardShortcutSessionActiveOrFinalizing = false
         isSystemWideDictationActive = false
         isHandsFreeDictationActive = false
+        isWakeWordRecording = false
         isFinalizingTranscript = false
+        wakeSilenceMonitorTask?.cancel()
+        wakeSilenceMonitorTask = nil
         currentAudioPowerLevel = 0
         recordedAudioPowerHistory = Array(
             repeating: Self.recordedAudioPowerHistoryBaselineLevel,

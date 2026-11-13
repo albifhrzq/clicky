@@ -75,7 +75,7 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
     public var turnBasedHandler: ((_ userText: String) async throws -> String)?
 
     private nonisolated let realtimeClient = RealtimeVoiceClient()
-    private let elevenLabsTTSClient = ElevenLabsTTSClient()
+    private let elevenLabsTTSClient = ElevenLabsTTSClient.shared
     private let speechSynthesizer = AVSpeechSynthesizer()
     private let unifiedLLMClient = UnifiedLLMClient()
     private let urlSession: URLSession
@@ -526,7 +526,22 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
 
         let config = ClickyConfiguration.shared
 
-        // 1. OpenAI TTS (/v1/audio/speech)
+        // 1. ElevenLabs TTS (BYOK or Worker Proxy) — highest priority when configured
+        let hasElevenLabsKey = !config.elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasElevenLabsKey || config.mode == .cloudflareWorker {
+            do {
+                try await elevenLabsTTSClient.speakText(trimmedText)
+                while elevenLabsTTSClient.isPlaying {
+                    try Task.checkCancellation()
+                    try await Task.sleep(nanoseconds: 150_000_000)
+                }
+                return
+            } catch {
+                print("⚠️ ElevenLabs TTS failed, cascading: \(error.localizedDescription)")
+            }
+        }
+
+        // 2. OpenAI TTS (/v1/audio/speech)
         let openAIKey = config.openaiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !openAIKey.isEmpty {
             do {
@@ -543,7 +558,7 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
             }
         }
 
-        // 2. Gemini TTS
+        // 3. Gemini TTS
         refreshGeminiCooldownState()
         let geminiKey = config.geminiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !geminiKey.isEmpty && !isGeminiInCooldown {
@@ -557,21 +572,6 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
                 return
             } catch {
                 print("⚠️ Gemini TTS failed, cascading: \(error.localizedDescription)")
-            }
-        }
-
-        // 3. ElevenLabs TTS (BYOK or Worker Proxy)
-        let hasElevenLabsKey = !config.elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if hasElevenLabsKey || config.mode == .cloudflareWorker {
-            do {
-                try await elevenLabsTTSClient.speakText(trimmedText)
-                while elevenLabsTTSClient.isPlaying {
-                    try Task.checkCancellation()
-                    try await Task.sleep(nanoseconds: 150_000_000)
-                }
-                return
-            } catch {
-                print("⚠️ ElevenLabs TTS failed, cascading to system voice: \(error.localizedDescription)")
             }
         }
 

@@ -110,9 +110,7 @@ final class CompanionManager: ObservableObject {
     private let unifiedLLMClient = UnifiedLLMClient.shared
     private let configuration = ClickyConfiguration.shared
 
-    private lazy var elevenLabsTTSClient: ElevenLabsTTSClient = {
-        ElevenLabsTTSClient(proxyURL: "\(ClickyConfiguration.shared.workerBaseURL)/tts")
-    }()
+    private let elevenLabsTTSClient = ElevenLabsTTSClient.shared
     private let fallbackSpeechSynthesizer = AVSpeechSynthesizer()
 
     /// Conversation history so Clicky remembers prior exchanges within a session.
@@ -133,6 +131,11 @@ final class CompanionManager: ObservableObject {
     private var activeDocumentNoticeCancellable: AnyCancellable?
     private var activeDocumentContextCancellable: AnyCancellable?
     private var realtimeStateCancellable: AnyCancellable?
+    private var wakeWordCancellables: Set<AnyCancellable> = []
+    private var wakeWordSleepObserver: NSObjectProtocol?
+    private var wakeWordWakeObserver: NSObjectProtocol?
+    private var wakeWordPlaybackObserver: NSObjectProtocol?
+    private var isSystemSleepingForWakeWord = false
     private var accessibilityCheckTimer: Timer?
     private var pendingKeyboardShortcutStartTask: Task<Void, Never>?
     /// Scheduled hide for transient cursor mode — cancelled if the user
@@ -251,6 +254,7 @@ final class CompanionManager: ObservableObject {
         bindVoiceStateObservation()
         bindShortcutMonitorCallbacks()
         bindRealtimeVoiceController()
+        bindWakeWordListener()
 
         // If the user already completed onboarding AND all permissions are
         // still granted, show the cursor overlay immediately unless hidden.
@@ -347,6 +351,7 @@ final class CompanionManager: ObservableObject {
     }
 
     func stop() {
+        HeyClickyWakeWordListener.shared.stop()
         globalPushToTalkShortcutMonitor.stop()
         buddyDictationManager.cancelCurrentDictation()
         RealtimeVoiceController.shared.stopSession()
@@ -376,6 +381,19 @@ final class CompanionManager: ObservableObject {
         activeDocumentNoticeCancellable?.cancel()
         activeDocumentContextCancellable?.cancel()
         realtimeStateCancellable?.cancel()
+        wakeWordCancellables.removeAll()
+        if let wakeWordSleepObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeWordSleepObserver)
+            self.wakeWordSleepObserver = nil
+        }
+        if let wakeWordWakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeWordWakeObserver)
+            self.wakeWordWakeObserver = nil
+        }
+        if let wakeWordPlaybackObserver {
+            NotificationCenter.default.removeObserver(wakeWordPlaybackObserver)
+            self.wakeWordPlaybackObserver = nil
+        }
         accessibilityCheckTimer?.invalidate()
         accessibilityCheckTimer = nil
     }
@@ -1070,14 +1088,17 @@ final class CompanionManager: ObservableObject {
     private func bindVoiceStateObservation() {
         voiceStateCancellable = buddyDictationManager.$isRecordingFromKeyboardShortcut
             .combineLatest(
+                buddyDictationManager.$isWakeWordRecording,
                 buddyDictationManager.$isFinalizingTranscript,
                 buddyDictationManager.$isPreparingToRecord
             )
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] isRecording, isFinalizing, isPreparing in
+            .sink { [weak self] isShortcutRecording, isWakeRecording, isFinalizing, isPreparing in
                 guard let self else { return }
                 guard self.voiceState != .responding else { return }
                 guard !RealtimeVoiceController.shared.state.isActive else { return }
+
+                let isRecording = isShortcutRecording || isWakeRecording
 
                 if isFinalizing {
                     self.markBusy()
@@ -1095,6 +1116,140 @@ final class CompanionManager: ObservableObject {
                     }
                 }
             }
+    }
+
+    private func bindWakeWordListener() {
+        wakeWordCancellables.removeAll()
+
+        HeyClickyWakeWordListener.shared.onWakeDetected = { [weak self] trailingText in
+            guard let self else { return }
+            guard !self.buddyDictationManager.isDictationInProgress else { return }
+            guard !self.showOnboardingVideo else { return }
+
+            self.markBusy()
+            self.transientHideTask?.cancel()
+            self.transientHideTask = nil
+
+            if !self.shouldShowPersistentOverlay && !self.isOverlayVisible {
+                self.overlayWindowManager.hasShownOverlayBefore = true
+                self.overlayWindowManager.showOverlay(onScreens: NSScreen.screens, companionManager: self)
+                self.isOverlayVisible = self.overlayWindowManager.isShowingOverlay()
+            }
+
+            NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+
+            self.currentResponseTask?.cancel()
+            self.elevenLabsTTSClient.stopPlayback()
+            self.fallbackSpeechSynthesizer.stopSpeaking(at: .immediate)
+            RealtimeVoiceController.shared.interruptAssistantSpeech()
+            self.clearDetectedElementLocation()
+
+            ClickySoundEffectPlayer.shared.play(.gelPop)
+            self.voiceState = .listening
+
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.buddyDictationManager.startWakeTriggeredCapture(
+                    initialTrailingText: trailingText,
+                    submitDraftText: { [weak self] finalTranscript in
+                        guard let self else { return }
+                        self.lastTranscript = finalTranscript
+                        print("🗣️ Companion received wake-call transcript: \(finalTranscript)")
+                        ClickySoundEffectPlayer.shared.play(.clickyTextSend)
+                        ClickyAnalytics.trackUserMessageSent(transcript: finalTranscript)
+                        self.sendTranscriptToClaudeWithScreenshot(transcript: finalTranscript)
+                    }
+                )
+                self.syncWakeWordListenerState()
+            }
+        }
+
+        configuration.$voiceWakeWordEnabled
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.syncWakeWordListenerState() }
+            .store(in: &wakeWordCancellables)
+
+        configuration.$voiceWakePhrase
+            .debounce(for: .milliseconds(250), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.syncWakeWordListenerState() }
+            .store(in: &wakeWordCancellables)
+
+        $voiceState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.syncWakeWordListenerState() }
+            .store(in: &wakeWordCancellables)
+
+        buddyDictationManager.$isRecordingFromKeyboardShortcut
+            .combineLatest(
+                buddyDictationManager.$isWakeWordRecording,
+                buddyDictationManager.$isSystemWideDictationActive,
+                buddyDictationManager.$isFinalizingTranscript
+            )
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _, _, _ in self?.syncWakeWordListenerState() }
+            .store(in: &wakeWordCancellables)
+
+        RealtimeVoiceController.shared.$state
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.syncWakeWordListenerState() }
+            .store(in: &wakeWordCancellables)
+
+        wakeWordPlaybackObserver = NotificationCenter.default.addObserver(
+            forName: .clickyElevenLabsPlaybackDidFinish,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.syncWakeWordListenerState()
+            }
+        }
+
+        wakeWordSleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.isSystemSleepingForWakeWord = true
+                self?.syncWakeWordListenerState()
+            }
+        }
+
+        wakeWordWakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.isSystemSleepingForWakeWord = false
+                self?.syncWakeWordListenerState()
+            }
+        }
+
+        syncWakeWordListenerState()
+    }
+
+    func syncWakeWordListenerState() {
+        let pauseReason: String?
+        if isSystemSleepingForWakeWord {
+            pauseReason = "Mac sleeping"
+        } else if buddyDictationManager.isDictationInProgress {
+            pauseReason = "recording"
+        } else if RealtimeVoiceController.shared.state.isActive {
+            pauseReason = "realtime voice"
+        } else if elevenLabsTTSClient.isPlaying || fallbackSpeechSynthesizer.isSpeaking {
+            pauseReason = "speaking"
+        } else if voiceState != .idle {
+            pauseReason = "busy"
+        } else {
+            pauseReason = nil
+        }
+
+        HeyClickyWakeWordListener.shared.sync(
+            enabled: configuration.voiceWakeWordEnabled,
+            phraseSetting: configuration.voiceWakePhrase,
+            pauseReason: pauseReason
+        )
     }
 
     private func bindRealtimeVoiceController() {
@@ -1545,9 +1700,11 @@ final class CompanionManager: ObservableObject {
             do {
                 try await elevenLabsTTSClient.speakText(spokenText)
                 voiceState = .responding
+                syncWakeWordListenerState()
                 return
             } catch {
                 ClickyAnalytics.trackTTSError(error: error.localizedDescription)
+                lastErrorMessage = error.localizedDescription
                 print("⚠️ ElevenLabs TTS error, cascading via RealtimeVoiceController: \(error.localizedDescription)")
             }
         }
@@ -1656,6 +1813,7 @@ final class CompanionManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 guard !Task.isCancelled else { return }
             }
+            self.syncWakeWordListenerState()
 
             while self.detectedElementScreenLocation != nil {
                 try? await Task.sleep(nanoseconds: 200_000_000)

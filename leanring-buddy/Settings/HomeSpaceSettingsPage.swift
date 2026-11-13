@@ -80,6 +80,8 @@ struct HomeSpaceSettingsPage: View {
     @ObservedObject private var oauthManager = AntigravityOAuthManager.shared
     @ObservedObject private var panelStylePreference = ClickyPanelStylePreference.shared
     @ObservedObject private var voicePreviewPlayer = VoicePreviewPlayer.shared
+    @ObservedObject private var elevenLabsTTSClient = ElevenLabsTTSClient.shared
+    @ObservedObject private var wakeWordListener = HeyClickyWakeWordListener.shared
     @ObservedObject private var realtimeVoiceController = RealtimeVoiceController.shared
     @ObservedObject private var shortcutMonitor: GlobalPushToTalkShortcutMonitor
     @ObservedObject private var browserBridge = ClickyBrowserBridge.shared
@@ -590,6 +592,14 @@ struct HomeSpaceSettingsPage: View {
                         .settingsInputChrome()
                 }
 
+                labeledInputRow(label: "ElevenLabs Voice") {
+                    TextField("ElevenLabs Voice ID", text: $configuration.elevenLabsVoiceID)
+                        .textFieldStyle(.plain)
+                        .settingsInputChrome()
+                }
+
+                elevenLabsTestRow
+
                 labeledInputRow(label: "AssemblyAI") {
                     SecureField("Enter AssemblyAI API key", text: $configuration.assemblyAIAPIKey)
                         .textFieldStyle(.plain)
@@ -663,6 +673,8 @@ struct HomeSpaceSettingsPage: View {
                         .textFieldStyle(.plain)
                         .settingsInputChrome()
                 }
+
+                elevenLabsTestRow
 
                 labeledInputRow(label: "AssemblyAI Key") {
                     SecureField("Enter AssemblyAI API key", text: $configuration.assemblyAIAPIKey)
@@ -835,10 +847,69 @@ struct HomeSpaceSettingsPage: View {
         }
     }
 
+    private var elevenLabsTestRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button {
+                    Task {
+                        await elevenLabsTTSClient.testVoice()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        if elevenLabsTTSClient.isTestingVoice {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "speaker.wave.2.fill")
+                        }
+                        Text(elevenLabsTTSClient.isTestingVoice ? "Testing Voice..." : "Test ElevenLabs Voice")
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(DS.Colors.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(DS.Colors.surface3))
+                }
+                .buttonStyle(.plain)
+                .disabled(elevenLabsTTSClient.isTestingVoice)
+                .pointerCursor(isEnabled: !elevenLabsTTSClient.isTestingVoice)
+
+                if elevenLabsTTSClient.isPlaying {
+                    Button("Stop") {
+                        elevenLabsTTSClient.stopPlayback()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(DS.Colors.destructiveText)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(DS.Colors.destructive.opacity(0.14)))
+                    .pointerCursor()
+                }
+
+                Spacer()
+            }
+
+            if let errorMessage = elevenLabsTTSClient.lastErrorMessage, !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.destructiveText)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let statusMessage = elevenLabsTTSClient.lastStatusMessage, !statusMessage.isEmpty {
+                Text(statusMessage)
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.success)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     // MARK: - 3. Voice & 133 Languages
 
     private func voiceSectionView(isCompact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 14) {
+            voiceWakeCallCard
+
             settingsCard(title: "VOICE PIPELINE") {
                 VStack(alignment: .leading, spacing: 10) {
                     Picker("Voice Pipeline", selection: $configuration.voicePipelineMode) {
@@ -1080,10 +1151,81 @@ struct HomeSpaceSettingsPage: View {
         }
     }
 
+    private var voiceWakeCallCard: some View {
+        settingsCard(title: "VOICE WAKE CALL (CUSTOM NAME)") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Toggle(isOn: $configuration.voiceWakeWordEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Listen for Wake Phrase")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(DS.Colors.textPrimary)
+                            Text("Hands-free callout using local Apple Speech recognition; pauses automatically while speaking or recording.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DS.Colors.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                    .tint(DS.Colors.accent)
+                }
+
+                labeledInputRow(label: "Wake Phrase") {
+                    TextField("hey clicky (e.g. hey nora)", text: $configuration.voiceWakePhrase)
+                        .textFieldStyle(.plain)
+                        .settingsInputChrome()
+                }
+
+                Text("You can customize any name (e.g. \"hey nora\", \"halo clicky\") or list multiple phrases separated by commas (e.g. \"hey nora, nora\").")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(wakeWordStatusColor)
+                        .frame(width: 7, height: 7)
+
+                    Text(wakeWordListener.status.displayLabel)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(wakeWordStatusColor)
+
+                    Spacer()
+
+                    if !wakeWordListener.lastHeardSnippet.isEmpty && configuration.voiceWakeWordEnabled {
+                        Text("Heard: \"\(wakeWordListener.lastHeardSnippet)\"")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(DS.Colors.textTertiary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                            .frame(maxWidth: 260, alignment: .trailing)
+                    }
+                }
+            }
+        }
+    }
+
+    private var wakeWordStatusColor: Color {
+        switch wakeWordListener.status {
+        case .listening:
+            return DS.Colors.success
+        case .triggered:
+            return DS.Colors.accentText
+        case .paused, .requestingPermission:
+            return DS.Colors.warningText
+        case .error:
+            return DS.Colors.destructiveText
+        case .stopped:
+            return DS.Colors.textTertiary
+        }
+    }
+
     // MARK: - 5. Shortcuts (4-Slot Configurator)
 
     private var shortcutsSectionView: some View {
         VStack(alignment: .leading, spacing: 14) {
+            voiceWakeCallCard
+
             settingsCard(title: "GLOBAL SHORTCUT SLOTS") {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Configure system-wide shortcuts monitored via CGEvent tap. Press Esc anytime to interrupt active voice output.")

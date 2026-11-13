@@ -70,10 +70,12 @@ public final class ClickyConfiguration: ObservableObject {
     private let antigravityClientIDKey = "antigravity_client_id"
     private let antigravityClientSecretKey = "antigravity_client_secret"
 
-    // Voice, Dictation, Cursor & Approval Keys
+    // Voice, Dictation, Wake Word, Cursor & Approval Keys
     private let voicePipelineModeKey = "clicky_voice_pipeline_mode"
     private let selectedVoiceIDKey = "clicky_selected_voice_id"
     private let selectedVoiceLanguageKey = "clicky_selected_voice_language"
+    private let voiceWakeWordEnabledKey = "clicky_voice_wake_word_enabled"
+    private let voiceWakePhraseKey = "clicky_voice_wake_phrase"
     private let dictationLanguageCodeKey = "clicky_dictation_language_code"
     private let dictationAutoDetectKey = "clicky_dictation_auto_detect"
     private let hideFloatingCursorKey = "clicky_hide_floating_cursor"
@@ -167,6 +169,14 @@ public final class ClickyConfiguration: ObservableObject {
         didSet { defaults.set(selectedVoiceLanguage, forKey: selectedVoiceLanguageKey) }
     }
 
+    @Published public var voiceWakeWordEnabled: Bool {
+        didSet { defaults.set(voiceWakeWordEnabled, forKey: voiceWakeWordEnabledKey) }
+    }
+
+    @Published public var voiceWakePhrase: String {
+        didSet { defaults.set(voiceWakePhrase, forKey: voiceWakePhraseKey) }
+    }
+
     @Published public var dictationLanguageCode: String {
         didSet { defaults.set(dictationLanguageCode, forKey: dictationLanguageCodeKey) }
     }
@@ -234,6 +244,10 @@ public final class ClickyConfiguration: ObservableObject {
         self.voicePipelineMode = ClickyVoicePipelineMode(rawValue: savedVoiceMode) ?? .auto
         self.selectedVoiceID = defaults.string(forKey: selectedVoiceIDKey) ?? "cedar"
         self.selectedVoiceLanguage = defaults.string(forKey: selectedVoiceLanguageKey) ?? "auto"
+        self.voiceWakeWordEnabled = defaults.object(forKey: voiceWakeWordEnabledKey) as? Bool ?? false
+        let savedWakePhrase = defaults.string(forKey: voiceWakePhraseKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.voiceWakePhrase = (savedWakePhrase?.isEmpty == false) ? savedWakePhrase! : "hey clicky"
         self.dictationLanguageCode = defaults.string(forKey: dictationLanguageCodeKey) ?? "auto"
         self.dictationAutoDetect = defaults.object(forKey: dictationAutoDetectKey) as? Bool ?? true
         self.hideFloatingCursor = defaults.object(forKey: hideFloatingCursorKey) as? Bool ?? false
