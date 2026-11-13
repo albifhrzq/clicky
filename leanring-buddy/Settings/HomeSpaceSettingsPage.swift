@@ -969,10 +969,38 @@ struct HomeSpaceSettingsPage: View {
                     )
 
                     if let currentLanguage = VoiceLanguageCatalog.language(forCode: configuration.selectedVoiceLanguage) {
-                        Text("Selected: \(currentLanguage.displayLabel) [\(currentLanguage.bcp47Locale)]")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(DS.Colors.accentText)
+                        HStack(spacing: 8) {
+                            Text("Selected: \(currentLanguage.displayLabel) [\(currentLanguage.bcp47Locale)]")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(DS.Colors.accentText)
+
+                            Spacer()
+
+                            if configuration.dictationLanguageCode != configuration.selectedVoiceLanguage
+                                || (!configuration.dictationAutoDetect && configuration.selectedVoiceLanguage == "auto") {
+                                Button("Apply to Dictation too") {
+                                    if configuration.selectedVoiceLanguage == "auto" {
+                                        configuration.dictationAutoDetect = true
+                                        configuration.dictationLanguageCode = "auto"
+                                    } else {
+                                        configuration.dictationAutoDetect = false
+                                        configuration.dictationLanguageCode = configuration.selectedVoiceLanguage
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundColor(DS.Colors.textSecondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(DS.Colors.surface3))
+                                .pointerCursor()
+                            }
+                        }
                     }
+
+                    Text("Applies to Clicky AI replies, ElevenLabs TTS, and voice input recognition.")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(DS.Colors.textTertiary)
 
                     let filteredLanguages = filterLanguages(query: voiceLanguageSearchQuery)
                     ScrollView {
@@ -2000,6 +2028,8 @@ struct HomeSpaceSettingsPage: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? DS.Colors.accentSubtle : Color.clear)

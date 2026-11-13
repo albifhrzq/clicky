@@ -1483,6 +1483,23 @@ final class CompanionManager: ObservableObject {
     ) -> String {
         var sections = [basePrompt]
 
+        let selectedLanguageCode = ClickyConfiguration.shared.selectedVoiceLanguage
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if !selectedLanguageCode.isEmpty && selectedLanguageCode != "auto" {
+            let language = VoiceLanguageCatalog.language(forCode: selectedLanguageCode)
+            let displayName = language?.name ?? selectedLanguageCode
+            let nativeName = language?.nativeName ?? displayName
+            let bcp47 = language?.bcp47Locale ?? selectedLanguageCode
+            sections.append(
+                """
+                <response_language>
+                Always reply in \(displayName) (\(nativeName), locale: \(bcp47)) unless the user explicitly asks to write or translate in another language. Use natural conversational \(displayName) phrasing.
+                </response_language>
+                """
+            )
+        }
+
         if let clickySlug,
            let profile = ClickyRoster.shared.clicky(forSlug: clickySlug) {
             sections.append(
@@ -1893,7 +1910,11 @@ final class CompanionManager: ObservableObject {
         }
 
         let utterance = AVSpeechUtterance(string: spokenSummary)
-        utterance.voice = AVSpeechSynthesisVoice(language: ClickyConfiguration.shared.selectedVoiceLanguage == "auto" ? nil : ClickyConfiguration.shared.selectedVoiceLanguage)
+        let langCode = ClickyConfiguration.shared.selectedVoiceLanguage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !langCode.isEmpty && langCode.lowercased() != "auto" {
+            let bcp47 = VoiceLanguageCatalog.language(forCode: langCode)?.bcp47Locale ?? langCode
+            utterance.voice = AVSpeechSynthesisVoice(language: bcp47)
+        }
         fallbackSpeechSynthesizer.speak(utterance)
         voiceState = .responding
         lastErrorMessage = message

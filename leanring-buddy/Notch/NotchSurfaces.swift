@@ -993,6 +993,21 @@ struct NotchHeyClickyPeekSurface: View {
                 }
 
                 HStack {
+                    Text("Language")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(DS.Colors.textSecondary)
+                    Spacer()
+                    Picker("", selection: $config.selectedVoiceLanguage) {
+                        ForEach(notchLanguageQuickOptions) { lang in
+                            Text(lang.displayLabel).tag(lang.code)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 210)
+                    .pointerCursor()
+                }
+
+                HStack {
                     Text("Active Model")
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundColor(DS.Colors.textSecondary)
@@ -1066,6 +1081,16 @@ struct NotchHeyClickyPeekSurface: View {
                 .dsPrimaryButtonStyle(isFullWidth: false)
             }
         }
+    }
+
+    private var notchLanguageQuickOptions: [VoiceLanguage] {
+        let quickCodes = ["auto", "id", "en", "ms", "ja", "zh", "ko", "ar", "es", "fr", "de"]
+        var list = quickCodes.compactMap { VoiceLanguageCatalog.language(forCode: $0) }
+        if !quickCodes.contains(config.selectedVoiceLanguage),
+           let current = VoiceLanguageCatalog.language(forCode: config.selectedVoiceLanguage) {
+            list.insert(current, at: 1)
+        }
+        return list
     }
 
     // MARK: - Document Tab

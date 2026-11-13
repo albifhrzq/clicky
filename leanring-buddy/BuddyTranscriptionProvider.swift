@@ -36,10 +36,39 @@ enum BuddyTranscriptionProviderFactory {
         case appleSpeech = "apple"
     }
 
+    /// AssemblyAI Universal-3 Pro streaming (`u3-rt-pro`) supports 6 Western languages.
+    /// For languages outside this set (e.g. Indonesian, Japanese, Arabic), route to OpenAI
+    /// or Apple Speech so the selected language is actually transcribed accurately.
+    private static let assemblyAIStreamingSupportedBaseLanguages: Set<String> = [
+        "en", "es", "de", "fr", "pt", "it"
+    ]
+
     static func makeDefaultProvider() -> any BuddyTranscriptionProvider {
         let provider = resolveProvider()
         print("🎙️ Transcription: using \(provider.displayName)")
         return provider
+    }
+
+    private static func effectiveTargetBaseLanguage() -> String {
+        let defaults = UserDefaults.standard
+        let dictationAutoDetect = defaults.object(forKey: "clicky_dictation_auto_detect") as? Bool ?? true
+        let dictationCode = (defaults.string(forKey: "clicky_dictation_language_code") ?? "auto")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let voiceCode = (defaults.string(forKey: "clicky_selected_voice_language") ?? "auto")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let raw: String
+        if !dictationAutoDetect && !dictationCode.isEmpty && dictationCode != "auto" {
+            raw = dictationCode
+        } else if !voiceCode.isEmpty && voiceCode != "auto" {
+            raw = voiceCode
+        } else {
+            return "auto"
+        }
+
+        return raw.split(separator: "-").first.map(String.init) ?? raw
     }
 
     private static func resolveProvider() -> any BuddyTranscriptionProvider {
@@ -51,7 +80,20 @@ enum BuddyTranscriptionProviderFactory {
         let assemblyAIProvider = AssemblyAIStreamingTranscriptionProvider()
         let openAIProvider = OpenAIAudioTranscriptionProvider()
 
+        let targetBaseLang = effectiveTargetBaseLanguage()
+        let assemblyAISupportsTargetLanguage = targetBaseLang == "auto"
+            || assemblyAIStreamingSupportedBaseLanguages.contains(targetBaseLang)
+
         if preferredProvider == .appleSpeech {
+            return AppleSpeechTranscriptionProvider()
+        }
+
+        if !assemblyAISupportsTargetLanguage {
+            if openAIProvider.isConfigured {
+                print("🎙️ Transcription: language '\(targetBaseLang)' uses OpenAI (outside AssemblyAI u3-rt-pro streaming set)")
+                return openAIProvider
+            }
+            print("🎙️ Transcription: language '\(targetBaseLang)' uses Apple Speech (outside AssemblyAI u3-rt-pro streaming set)")
             return AppleSpeechTranscriptionProvider()
         }
 

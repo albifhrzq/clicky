@@ -383,12 +383,18 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
 
     private static func makeRecognizer(for phraseSetting: String) -> SFSpeechRecognizer? {
         let lower = phraseSetting.lowercased()
-        let selectedLang = ClickyConfiguration.shared.selectedVoiceLanguage.lowercased()
+        let selectedLang = ClickyConfiguration.shared.selectedVoiceLanguage
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
 
-        if (lower.contains("halo") || lower.contains("hai ") || selectedLang == "id"),
-           let idRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "id-ID")),
-           idRecognizer.isAvailable {
-            return idRecognizer
+        let startsWithEnglishGreeting = lower.hasPrefix("hey ") || lower.hasPrefix("hi ")
+        if (lower.contains("halo") || lower.contains("hai ") || (!startsWithEnglishGreeting && selectedLang != "auto" && !selectedLang.isEmpty)) {
+            let bcp47 = VoiceLanguageCatalog.language(forCode: selectedLang)?.bcp47Locale
+                ?? (selectedLang == "id" ? "id-ID" : selectedLang)
+            if let customRecognizer = SFSpeechRecognizer(locale: Locale(identifier: bcp47)),
+               customRecognizer.isAvailable {
+                return customRecognizer
+            }
         }
 
         if let enRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")),

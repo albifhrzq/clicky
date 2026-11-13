@@ -55,10 +55,13 @@ final class OpenAIAudioTranscriptionProvider: BuddyTranscriptionProvider {
 
         let config = ClickyConfiguration.shared
         let configuredLanguage: String? = {
-            if config.dictationAutoDetect {
-                return nil
+            let candidate: String
+            if !config.dictationAutoDetect {
+                candidate = config.dictationLanguageCode
+            } else {
+                candidate = config.selectedVoiceLanguage
             }
-            let trimmed = config.dictationLanguageCode.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || trimmed.lowercased() == "auto" {
                 return nil
             }

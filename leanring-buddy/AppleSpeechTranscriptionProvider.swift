@@ -42,10 +42,43 @@ final class AppleSpeechTranscriptionProvider: BuddyTranscriptionProvider {
     }
 
     private static func makeBestAvailableSpeechRecognizer() -> SFSpeechRecognizer? {
-        let preferredLocales = [
-            Locale.autoupdatingCurrent,
-            Locale(identifier: "en-US")
-        ]
+        var preferredLocales: [Locale] = []
+
+        let defaults = UserDefaults.standard
+        let dictationAutoDetect = defaults.object(forKey: "clicky_dictation_auto_detect") as? Bool ?? true
+        let dictationCode = (defaults.string(forKey: "clicky_dictation_language_code") ?? "auto")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let voiceCode = (defaults.string(forKey: "clicky_selected_voice_language") ?? "auto")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let effectiveCode: String
+        if !dictationAutoDetect && !dictationCode.isEmpty && dictationCode != "auto" {
+            effectiveCode = dictationCode
+        } else if !voiceCode.isEmpty && voiceCode != "auto" {
+            effectiveCode = voiceCode
+        } else {
+            effectiveCode = "auto"
+        }
+
+        if effectiveCode != "auto" {
+            let bcp47 = VoiceLanguageCatalog.language(forCode: effectiveCode)?.bcp47Locale ?? effectiveCode
+            preferredLocales.append(Locale(identifier: bcp47))
+            if effectiveCode != bcp47 {
+                preferredLocales.append(Locale(identifier: effectiveCode))
+            }
+        }
+
+        preferredLocales.append(Locale.autoupdatingCurrent)
+        preferredLocales.append(Locale(identifier: "en-US"))
+
+        for preferredLocale in preferredLocales {
+            if let speechRecognizer = SFSpeechRecognizer(locale: preferredLocale),
+               speechRecognizer.isAvailable {
+                return speechRecognizer
+            }
+        }
 
         for preferredLocale in preferredLocales {
             if let speechRecognizer = SFSpeechRecognizer(locale: preferredLocale) {
