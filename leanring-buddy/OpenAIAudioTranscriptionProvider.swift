@@ -3,6 +3,8 @@
 //  leanring-buddy
 //
 //  AI transcription provider backed by OpenAI's audio transcription API.
+//  Reads the API key from ClickyConfiguration.shared.openaiAPIKey (Keychain)
+//  and supports configurable dictation language or automatic language detection.
 //
 
 import AVFoundation
@@ -17,20 +19,25 @@ struct OpenAIAudioTranscriptionProviderError: LocalizedError {
 }
 
 final class OpenAIAudioTranscriptionProvider: BuddyTranscriptionProvider {
-    private let apiKey = AppBundleConfiguration.stringValue(forKey: "OpenAIAPIKey")
-    private let modelName = AppBundleConfiguration.stringValue(forKey: "OpenAITranscriptionModel")
-        ?? "gpt-4o-transcribe"
+    private var apiKey: String {
+        ClickyConfiguration.shared.openaiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var modelName: String {
+        AppBundleConfiguration.stringValue(forKey: "OpenAITranscriptionModel")
+            ?? "gpt-4o-transcribe"
+    }
 
     let displayName = "OpenAI"
     let requiresSpeechRecognitionPermission = false
 
     var isConfigured: Bool {
-        apiKey != nil
+        !apiKey.isEmpty
     }
 
     var unavailableExplanation: String? {
         guard !isConfigured else { return nil }
-        return "OpenAI transcription is not configured. Add OpenAIAPIKey to Info.plist."
+        return "OpenAI transcription is not configured. Add your OpenAI API key in Settings."
     }
 
     func startStreamingSession(
@@ -39,15 +46,32 @@ final class OpenAIAudioTranscriptionProvider: BuddyTranscriptionProvider {
         onFinalTranscriptReady: @escaping (String) -> Void,
         onError: @escaping (Error) -> Void
     ) async throws -> any BuddyStreamingTranscriptionSession {
-        guard let apiKey else {
+        let currentAPIKey = apiKey
+        guard !currentAPIKey.isEmpty else {
             throw OpenAIAudioTranscriptionProviderError(
                 message: unavailableExplanation ?? "OpenAI transcription is not configured."
             )
         }
 
+        let config = ClickyConfiguration.shared
+        let configuredLanguage: String? = {
+            if config.dictationAutoDetect {
+                return nil
+            }
+            let trimmed = config.dictationLanguageCode.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed.lowercased() == "auto" {
+                return nil
+            }
+            if let hyphenIndex = trimmed.firstIndex(of: "-") {
+                return String(trimmed[..<hyphenIndex]).lowercased()
+            }
+            return trimmed.lowercased()
+        }()
+
         return OpenAIAudioTranscriptionSession(
-            apiKey: apiKey,
+            apiKey: currentAPIKey,
             modelName: modelName,
+            languageCode: configuredLanguage,
             keyterms: keyterms,
             onTranscriptUpdate: onTranscriptUpdate,
             onFinalTranscriptReady: onFinalTranscriptReady,
@@ -56,7 +80,7 @@ final class OpenAIAudioTranscriptionProvider: BuddyTranscriptionProvider {
     }
 }
 
-private final class OpenAIAudioTranscriptionSession: BuddyStreamingTranscriptionSession {
+private nonisolated final class OpenAIAudioTranscriptionSession: BuddyStreamingTranscriptionSession, @unchecked Sendable {
     let finalTranscriptFallbackDelaySeconds: TimeInterval = 8.0
 
     private struct TranscriptionResponse: Decodable {
@@ -68,6 +92,7 @@ private final class OpenAIAudioTranscriptionSession: BuddyStreamingTranscription
 
     private let apiKey: String
     private let modelName: String
+    private let languageCode: String?
     private let keyterms: [String]
     private let onTranscriptUpdate: (String) -> Void
     private let onFinalTranscriptReady: (String) -> Void
@@ -88,6 +113,7 @@ private final class OpenAIAudioTranscriptionSession: BuddyStreamingTranscription
     init(
         apiKey: String,
         modelName: String,
+        languageCode: String?,
         keyterms: [String],
         onTranscriptUpdate: @escaping (String) -> Void,
         onFinalTranscriptReady: @escaping (String) -> Void,
@@ -95,6 +121,7 @@ private final class OpenAIAudioTranscriptionSession: BuddyStreamingTranscription
     ) {
         self.apiKey = apiKey
         self.modelName = modelName
+        self.languageCode = languageCode
         self.keyterms = keyterms
         self.onTranscriptUpdate = onTranscriptUpdate
         self.onFinalTranscriptReady = onFinalTranscriptReady
@@ -232,11 +259,13 @@ private final class OpenAIAudioTranscriptionSession: BuddyStreamingTranscription
             value: modelName,
             usingBoundary: boundary
         )
-        requestBodyData.appendMultipartFormField(
-            named: "language",
-            value: "en",
-            usingBoundary: boundary
-        )
+        if let languageCode, !languageCode.isEmpty {
+            requestBodyData.appendMultipartFormField(
+                named: "language",
+                value: languageCode,
+                usingBoundary: boundary
+            )
+        }
         requestBodyData.appendMultipartFormField(
             named: "response_format",
             value: "json",
@@ -287,11 +316,11 @@ private final class OpenAIAudioTranscriptionSession: BuddyStreamingTranscription
 }
 
 private extension Data {
-    mutating func appendString(_ string: String) {
+    nonisolated mutating func appendString(_ string: String) {
         append(string.data(using: .utf8)!)
     }
 
-    mutating func appendMultipartFormField(
+    nonisolated mutating func appendMultipartFormField(
         named fieldName: String,
         value: String,
         usingBoundary boundary: String
@@ -301,7 +330,7 @@ private extension Data {
         appendString("\(value)\r\n")
     }
 
-    mutating func appendMultipartFileField(
+    nonisolated mutating func appendMultipartFileField(
         named fieldName: String,
         filename: String,
         mimeType: String,

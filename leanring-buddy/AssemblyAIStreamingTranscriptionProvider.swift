@@ -17,15 +17,25 @@ struct AssemblyAIStreamingTranscriptionProviderError: LocalizedError {
 }
 
 final class AssemblyAIStreamingTranscriptionProvider: BuddyTranscriptionProvider {
-    /// URL for the Cloudflare Worker endpoint that returns a short-lived
-    /// AssemblyAI streaming token. The real API key never leaves the server.
-    private static let tokenProxyURL = "https://your-worker-name.your-subdomain.workers.dev/transcribe-token"
+    private static let byokTokenEndpointURLString = "https://streaming.assemblyai.com/v3/token?expires_in_seconds=480"
 
     let displayName = "AssemblyAI"
     let requiresSpeechRecognitionPermission = false
 
-    var isConfigured: Bool { true }
-    var unavailableExplanation: String? { nil }
+    var isConfigured: Bool {
+        let config = ClickyConfiguration.shared
+        let hasDirectKey = !config.assemblyAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasDirectKey {
+            return true
+        }
+        let hasWorkerURL = !config.workerBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return config.mode == .cloudflareWorker && hasWorkerURL
+    }
+
+    var unavailableExplanation: String? {
+        guard !isConfigured else { return nil }
+        return "AssemblyAI transcription is not configured. Add an AssemblyAI API key in Settings or switch to Cloudflare Worker mode."
+    }
 
     /// Single long-lived URLSession shared across all streaming sessions.
     /// Creating and invalidating a URLSession per session corrupts the OS
@@ -39,7 +49,7 @@ final class AssemblyAIStreamingTranscriptionProvider: BuddyTranscriptionProvider
         onFinalTranscriptReady: @escaping (String) -> Void,
         onError: @escaping (Error) -> Void
     ) async throws -> any BuddyStreamingTranscriptionSession {
-        // Fetch a fresh temporary token from the proxy before each session
+        // Fetch a fresh temporary token before each session
         let temporaryToken = try await fetchTemporaryToken()
         print("🎙️ AssemblyAI: fetched temporary token (\(temporaryToken.prefix(20))...)")
 
@@ -57,25 +67,36 @@ final class AssemblyAIStreamingTranscriptionProvider: BuddyTranscriptionProvider
         return session
     }
 
-    /// Calls AssemblyAI or the Cloudflare Worker to get a short-lived AssemblyAI token.
+    /// Fetches a short-lived AssemblyAI v3 token directly via
+    /// `GET https://streaming.assemblyai.com/v3/token?expires_in_seconds=480` in BYOK mode
+    /// or via the Cloudflare Worker `/transcribe-token` proxy route.
     private func fetchTemporaryToken() async throws -> String {
         let config = ClickyConfiguration.shared
-        let url: URL
-        var apiKey: String? = nil
+        let trimmedDirectKey = config.assemblyAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if !config.assemblyAIAPIKey.isEmpty {
-            url = URL(string: "https://api.assemblyai.com/v2/realtime/token?expires_in=480")!
-            apiKey = config.assemblyAIAPIKey
+        var request: URLRequest
+        if !trimmedDirectKey.isEmpty {
+            guard let url = URL(string: Self.byokTokenEndpointURLString) else {
+                throw AssemblyAIStreamingTranscriptionProviderError(
+                    message: "Invalid AssemblyAI v3 token URL."
+                )
+            }
+            request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue(trimmedDirectKey, forHTTPHeaderField: "Authorization")
         } else {
-            let workerURL = "\(config.workerBaseURL)/transcribe-token"
-            url = URL(string: workerURL) ?? URL(string: Self.tokenProxyURL)!
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let key = apiKey {
-            request.setValue(key, forHTTPHeaderField: "Authorization")
+            let trimmedWorkerBase = config.workerBaseURL
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard !trimmedWorkerBase.isEmpty,
+                  let workerURL = URL(string: "\(trimmedWorkerBase)/transcribe-token") else {
+                throw AssemblyAIStreamingTranscriptionProviderError(
+                    message: "No AssemblyAI API key or Worker proxy URL is configured."
+                )
+            }
+            request = URLRequest(url: workerURL)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -90,9 +111,10 @@ final class AssemblyAIStreamingTranscriptionProvider: BuddyTranscriptionProvider
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let token = json["token"] as? String else {
+              let token = json["token"] as? String,
+              !token.isEmpty else {
             throw AssemblyAIStreamingTranscriptionProviderError(
-                message: "Invalid token response from proxy."
+                message: "Invalid token response from AssemblyAI token endpoint."
             )
         }
 
@@ -100,7 +122,7 @@ final class AssemblyAIStreamingTranscriptionProvider: BuddyTranscriptionProvider
     }
 }
 
-private final class AssemblyAIStreamingTranscriptionSession: NSObject, BuddyStreamingTranscriptionSession {
+private nonisolated final class AssemblyAIStreamingTranscriptionSession: NSObject, BuddyStreamingTranscriptionSession, @unchecked Sendable {
     private struct MessageEnvelope: Decodable {
         let type: String
     }

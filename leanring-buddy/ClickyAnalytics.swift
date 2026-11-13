@@ -2,23 +2,271 @@
 //  ClickyAnalytics.swift
 //  leanring-buddy
 //
-//  Centralized PostHog analytics wrapper. All event names and properties
-//  are defined here so instrumentation is consistent and easy to audit.
+//  Centralized PostHog analytics wrapper, AI trace ID correlation (ClickyAITracing),
+//  in-memory RecentAppError ring buffer, and v1.1.3 structured product events.
+//  Respects local/offline mode: PostHog is only initialized when PostHogAPIKey is
+//  present in Info.plist or analyticsEnabled is explicitly true.
 //
 
 import Foundation
 import PostHog
 
+// MARK: - Recent App Error Ring Buffer
+
+public struct RecentAppError: Identifiable, Codable, Sendable {
+    public let id: UUID
+    public let timestamp: Date
+    public let domain: String
+    public let message: String
+    public let traceID: String?
+    public let metadata: [String: String]
+
+    public init(
+        id: UUID = UUID(),
+        timestamp: Date = Date(),
+        domain: String,
+        message: String,
+        traceID: String? = nil,
+        metadata: [String: String] = [:]
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.domain = domain
+        self.message = message
+        self.traceID = traceID
+        self.metadata = metadata
+    }
+}
+
+public final class ClickyRecentErrorBuffer: @unchecked Sendable {
+    public nonisolated static let shared = ClickyRecentErrorBuffer()
+
+    private nonisolated let lock = NSLock()
+    private nonisolated let capacity = 50
+    private nonisolated(unsafe) var entries: [RecentAppError] = []
+
+    private nonisolated init() {}
+
+    public nonisolated func record(
+        domain: String,
+        message: String,
+        traceID: String? = nil,
+        metadata: [String: String] = [:]
+    ) {
+        let entry = RecentAppError(
+            domain: domain,
+            message: message,
+            traceID: traceID,
+            metadata: metadata
+        )
+        lock.lock()
+        entries.append(entry)
+        if entries.count > capacity {
+            entries.removeFirst(entries.count - capacity)
+        }
+        lock.unlock()
+    }
+
+    public nonisolated func snapshot() -> [RecentAppError] {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries
+    }
+
+    public nonisolated func clear() {
+        lock.lock()
+        entries.removeAll()
+        lock.unlock()
+    }
+
+    public nonisolated func formattedReport() -> String {
+        let items = snapshot()
+        if items.isEmpty { return "No recent app errors recorded." }
+        let formatter = ISO8601DateFormatter()
+        return items.reversed().map { item in
+            let ts = formatter.string(from: item.timestamp)
+            let tracePart = item.traceID.map { " [trace:\($0)]" } ?? ""
+            return "[\(ts)] [\(item.domain)]\(tracePart) \(item.message)"
+        }.joined(separator: "\n")
+    }
+}
+
+// MARK: - AI Request & Session Tracing
+
+public final class ClickyAITracing: @unchecked Sendable {
+    public nonisolated static let shared = ClickyAITracing()
+
+    private nonisolated let lock = NSLock()
+    private nonisolated let maxTraceHistory = 100
+
+    private nonisolated(unsafe) var _currentSessionID: String = UUID().uuidString.lowercased()
+    private nonisolated(unsafe) var _currentTraceID: String?
+    private nonisolated(unsafe) var _traceIDs: [String] = []
+
+    private nonisolated init() {}
+
+    public nonisolated var currentSessionID: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return _currentSessionID
+    }
+
+    public nonisolated var currentTraceID: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _currentTraceID
+    }
+
+    public nonisolated var traceIDs: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _traceIDs
+    }
+
+    @discardableResult
+    public nonisolated func startNewSession() -> String {
+        let next = UUID().uuidString.lowercased()
+        lock.lock()
+        _currentSessionID = next
+        _currentTraceID = nil
+        lock.unlock()
+        return next
+    }
+
+    @discardableResult
+    public nonisolated func beginTrace(prefix: String = "clk") -> String {
+        let traceID = "\(prefix)_\(UUID().uuidString.lowercased())"
+        lock.lock()
+        _currentTraceID = traceID
+        _traceIDs.append(traceID)
+        if _traceIDs.count > maxTraceHistory {
+            _traceIDs.removeFirst(_traceIDs.count - maxTraceHistory)
+        }
+        lock.unlock()
+        return traceID
+    }
+
+    public nonisolated func endTrace(_ traceID: String) {
+        lock.lock()
+        if _currentTraceID == traceID {
+            _currentTraceID = nil
+        }
+        lock.unlock()
+    }
+
+    public nonisolated func traceHeaders(traceID: String? = nil) -> [String: String] {
+        lock.lock()
+        let activeTrace = traceID ?? _currentTraceID ?? "\(UUID().uuidString.lowercased())"
+        let session = _currentSessionID
+        lock.unlock()
+        return [
+            "X-Clicky-Trace-Id": activeTrace,
+            "X-Clicky-Session-Id": session
+        ]
+    }
+
+    public nonisolated func applyTraceHeaders(to request: inout URLRequest, traceID: String? = nil) {
+        for (header, value) in traceHeaders(traceID: traceID) {
+            request.setValue(value, forHTTPHeaderField: header)
+        }
+    }
+}
+
+// MARK: - Centralized Analytics
+
 enum ClickyAnalytics {
+
+    private static let analyticsEnabledKey = "clicky_analytics_enabled"
+    private static let defaultPostHogHost = "https://us.i.posthog.com"
+
+    private static var isConfigured = false
+
+    static var analyticsEnabled: Bool {
+        get {
+            if let stored = UserDefaults.standard.object(forKey: analyticsEnabledKey) as? Bool {
+                return stored
+            }
+            return AppBundleConfiguration.stringValue(forKey: "PostHogAPIKey") != nil
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: analyticsEnabledKey)
+            if newValue && !isConfigured {
+                configure()
+            }
+        }
+    }
+
+    private static var isLocalOrOfflineMode: Bool {
+        let config = ClickyConfiguration.shared
+        if config.mode != .cloudflareWorker {
+            return true
+        }
+        let host = config.workerBaseURL.lowercased()
+        return host.contains("127.0.0.1") || host.contains("localhost")
+    }
 
     // MARK: - Setup
 
     static func configure() {
-        let config = PostHogConfig(
-            apiKey: "phc_xcQPygmhTMzzYh8wNW92CCwoXmnzqyChAixh8zgpqC3C",
-            host: "https://us.i.posthog.com"
-        )
+        let plistAPIKey = AppBundleConfiguration.stringValue(forKey: "PostHogAPIKey")
+        let explicitOptIn = (UserDefaults.standard.object(forKey: analyticsEnabledKey) as? Bool) == true
+
+        // Respect local/offline mode: only initialize PostHog when PostHogAPIKey is in Info.plist or analyticsEnabled is true.
+        guard plistAPIKey != nil || explicitOptIn else {
+            isConfigured = false
+            return
+        }
+
+        if isLocalOrOfflineMode && !explicitOptIn && plistAPIKey == nil {
+            isConfigured = false
+            return
+        }
+
+        guard let apiKey = plistAPIKey, !apiKey.isEmpty else {
+            isConfigured = false
+            return
+        }
+
+        let host = AppBundleConfiguration.stringValue(forKey: "PostHogHost") ?? defaultPostHogHost
+        let config = PostHogConfig(apiKey: apiKey, host: host)
         PostHogSDK.shared.setup(config)
+        isConfigured = true
+    }
+
+    // MARK: - Core Capture & Error Recording
+
+    static func capture(_ event: String, properties: [String: Any] = [:]) {
+        guard isConfigured, analyticsEnabled else { return }
+        var enriched = properties
+        enriched["session_id"] = ClickyAITracing.shared.currentSessionID
+        if let traceID = ClickyAITracing.shared.currentTraceID, enriched["trace_id"] == nil {
+            enriched["trace_id"] = traceID
+        }
+        enriched["connection_mode"] = ClickyConfiguration.shared.mode.rawValue
+        PostHogSDK.shared.capture(event, properties: enriched)
+    }
+
+    static func identify(userID: String, properties: [String: Any] = [:]) {
+        guard isConfigured, analyticsEnabled else { return }
+        PostHogSDK.shared.identify(userID, userProperties: properties)
+    }
+
+    static func recordAppError(
+        domain: String,
+        message: String,
+        traceID: String? = ClickyAITracing.shared.currentTraceID,
+        metadata: [String: String] = [:]
+    ) {
+        ClickyRecentErrorBuffer.shared.record(
+            domain: domain,
+            message: message,
+            traceID: traceID,
+            metadata: metadata
+        )
+    }
+
+    static var recentErrors: [RecentAppError] {
+        ClickyRecentErrorBuffer.shared.snapshot()
     }
 
     // MARK: - App Lifecycle
@@ -26,95 +274,198 @@ enum ClickyAnalytics {
     /// Fired once on every app launch in applicationDidFinishLaunching.
     static func trackAppOpened() {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-        PostHogSDK.shared.capture("app_opened", properties: [
-            "app_version": version
+        capture("app_opened", properties: [
+            "app_version": version,
+            "connection_mode": ClickyConfiguration.shared.mode.rawValue
         ])
     }
 
     // MARK: - Onboarding
 
-    /// User clicked the Start button to begin onboarding for the first time.
     static func trackOnboardingStarted() {
-        PostHogSDK.shared.capture("onboarding_started")
+        capture("onboarding_started")
     }
 
-    /// User clicked "Watch Onboarding Again" from the panel footer.
     static func trackOnboardingReplayed() {
-        PostHogSDK.shared.capture("onboarding_replayed")
+        capture("onboarding_replayed")
     }
 
-    /// The onboarding video finished playing to the end.
     static func trackOnboardingVideoCompleted() {
-        PostHogSDK.shared.capture("onboarding_video_completed")
+        capture("onboarding_video_completed")
     }
 
-    /// The 40s onboarding demo interaction where Clicky points at something.
     static func trackOnboardingDemoTriggered() {
-        PostHogSDK.shared.capture("onboarding_demo_triggered")
+        capture("onboarding_demo_triggered")
     }
 
     // MARK: - Permissions
 
-    /// All three permissions (accessibility, screen recording, mic) are granted.
     static func trackAllPermissionsGranted() {
-        PostHogSDK.shared.capture("all_permissions_granted")
+        capture("all_permissions_granted")
     }
 
-    /// A single permission was granted. Called when polling detects a change.
     static func trackPermissionGranted(permission: String) {
-        PostHogSDK.shared.capture("permission_granted", properties: [
+        capture("permission_granted", properties: [
             "permission": permission
         ])
     }
 
     // MARK: - Voice Interaction
 
-    /// User pressed the push-to-talk shortcut (control+option) to start talking.
     static func trackPushToTalkStarted() {
-        PostHogSDK.shared.capture("push_to_talk_started")
+        capture("push_to_talk_started")
     }
 
-    /// User released the shortcut — transcript is being finalized.
     static func trackPushToTalkReleased() {
-        PostHogSDK.shared.capture("push_to_talk_released")
+        capture("push_to_talk_released")
     }
 
-    /// Transcription completed and the user's message is being sent to the AI.
     static func trackUserMessageSent(transcript: String) {
-        PostHogSDK.shared.capture("user_message_sent", properties: [
+        capture("user_message_sent", properties: [
             "transcript": transcript,
             "character_count": transcript.count
         ])
     }
 
-    /// Claude responded and the response is being spoken via TTS.
     static func trackAIResponseReceived(response: String) {
-        PostHogSDK.shared.capture("ai_response_received", properties: [
+        capture("ai_response_received", properties: [
             "response": response,
             "character_count": response.count
         ])
     }
 
-    /// Claude's response included a [POINT:x,y:label] coordinate tag,
-    /// so the buddy is flying to point at a UI element.
     static func trackElementPointed(elementLabel: String?) {
-        PostHogSDK.shared.capture("element_pointed", properties: [
+        capture("element_pointed", properties: [
             "element_label": elementLabel ?? "unknown"
         ])
     }
 
+    // MARK: - v1.1.3 Structured Product Events
+
+    static func trackConnectionModeChanged(mode: ClickyConnectionMode) {
+        capture("connection_mode_changed", properties: [
+            "mode": mode.rawValue
+        ])
+    }
+
+    static func trackDrawingStarted(streaming: Bool, has3D: Bool = false) {
+        capture("screen_drawing_started", properties: [
+            "streaming": streaming,
+            "has_3d": has3D
+        ])
+    }
+
+    static func trackDrawingCompleted(
+        markCount: Int,
+        inkedCount: Int,
+        hasPicture: Bool,
+        durationSeconds: Double,
+        error: String? = nil
+    ) {
+        var props: [String: Any] = [
+            "mark_count": markCount,
+            "inked_count": inkedCount,
+            "has_picture": hasPicture,
+            "duration_seconds": durationSeconds
+        ]
+        if let error {
+            props["error"] = error
+            recordAppError(domain: "screen_drawing", message: error)
+        }
+        capture("screen_drawing_completed", properties: props)
+    }
+
+    static func trackDrawingActionTriggered(kind: String, label: String?) {
+        capture("screen_drawing_action_triggered", properties: [
+            "kind": kind,
+            "label": label ?? ""
+        ])
+    }
+
+    static func trackGuidedTargetCompleted(role: String, label: String?) {
+        capture("guided_target_completed", properties: [
+            "role": role,
+            "label": label ?? ""
+        ])
+    }
+
+    static func trackAgentTurnStarted(clickySlug: String, model: String, traceID: String? = nil) {
+        var props: [String: Any] = [
+            "clicky_slug": clickySlug,
+            "model": model
+        ]
+        if let traceID { props["trace_id"] = traceID }
+        capture("agent_turn_started", properties: props)
+    }
+
+    static func trackAgentTurnCompleted(
+        clickySlug: String,
+        durationSeconds: Double,
+        succeeded: Bool,
+        traceID: String? = nil,
+        error: String? = nil
+    ) {
+        var props: [String: Any] = [
+            "clicky_slug": clickySlug,
+            "duration_seconds": durationSeconds,
+            "succeeded": succeeded
+        ]
+        if let traceID { props["trace_id"] = traceID }
+        if let error {
+            props["error"] = error
+            recordAppError(domain: "agent_harness", message: error, traceID: traceID)
+        }
+        capture("agent_turn_completed", properties: props)
+    }
+
+    static func trackVoicePipelineEvent(pipeline: String, event: String, language: String? = nil) {
+        var props: [String: Any] = [
+            "pipeline": pipeline,
+            "event": event
+        ]
+        if let language { props["language"] = language }
+        capture("voice_pipeline_event", properties: props)
+    }
+
+    static func trackBrowserBridgeAction(action: String, browser: String?, succeeded: Bool) {
+        capture("browser_bridge_action", properties: [
+            "action": action,
+            "browser": browser ?? "unknown",
+            "succeeded": succeeded
+        ])
+    }
+
+    static func trackRoutineTriggered(routineName: String) {
+        capture("routine_triggered", properties: [
+            "routine_name": routineName
+        ])
+    }
+
+    static func trackUploadApprovalDecision(decision: String, fileCount: Int) {
+        capture("upload_approval_decision", properties: [
+            "decision": decision,
+            "file_count": fileCount
+        ])
+    }
+
+    static func trackTakeOverStep(phase: String, stepDescription: String? = nil) {
+        var props: [String: Any] = ["phase": phase]
+        if let stepDescription { props["step"] = stepDescription }
+        capture("takeover_step", properties: props)
+    }
+
     // MARK: - Errors
 
-    /// An error occurred during the AI response pipeline.
     static func trackResponseError(error: String) {
-        PostHogSDK.shared.capture("response_error", properties: [
+        recordAppError(domain: "ai_response", message: error)
+        capture("response_error", properties: [
             "error": error
         ])
     }
 
-    /// An error occurred during TTS playback.
     static func trackTTSError(error: String) {
-        PostHogSDK.shared.capture("tts_error", properties: [
+        recordAppError(domain: "tts", message: error)
+        capture("tts_error", properties: [
             "error": error
         ])
     }

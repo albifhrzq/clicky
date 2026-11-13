@@ -2,14 +2,19 @@
 //  BuddyDictationManager.swift
 //  leanring-buddy
 //
-//  Shared push-to-talk dictation manager for the help chat and brainstorm buddy.
+//  Shared push-to-talk and system-wide dictation manager.
 //  Captures microphone audio with AVAudioEngine, routes it into the active
-//  transcription provider, and hands the final draft back to the active input bar.
+//  transcription provider, supports AX direct insertion / PID-targeted Cmd+V
+//  paste with clipboard restore, optional LLM cleanup via UnifiedLLMClient,
+//  local .jsonl transcript archival, and partial transcript clipboard salvage
+//  on sleep or interruption.
 //
 
 import AppKit
+import ApplicationServices
 import AVFoundation
 import Combine
+import CoreGraphics
 import Foundation
 import Speech
 
@@ -207,11 +212,85 @@ enum BuddyDictationPermissionProblem {
 private enum BuddyDictationStartSource {
     case microphoneButton
     case keyboardShortcut
+    case systemWideHold
+    case systemWideHandsFree
 }
 
 private struct BuddyDictationDraftCallbacks {
     let updateDraftText: (String) -> Void
     let submitDraftText: (String) -> Void
+}
+
+private struct SystemWideTargetContext {
+    let processIdentifier: pid_t?
+    let bundleIdentifier: String?
+    let focusedElement: AXUIElement?
+    let isEditableTextElement: Bool
+}
+
+private struct PasteboardSnapshotItem {
+    let representations: [(NSPasteboard.PasteboardType, Data)]
+}
+
+struct DictationTranscriptRecord: Codable, Sendable {
+    let id: String
+    let timestampISO8601: String
+    let provider: String
+    let languageCode: String
+    let mode: String
+    let rawText: String
+    let finalText: String
+    let targetAppBundleID: String?
+    let wasInterrupted: Bool
+}
+
+private nonisolated enum DictationTranscriptArchive {
+    private static let ioQueue = DispatchQueue(label: "com.clicky.dictation-transcript-archive", qos: .utility)
+
+    static func appendRecord(_ record: DictationTranscriptRecord) {
+        ioQueue.async {
+            guard let directoryURL = transcriptsDirectoryURL() else { return }
+            do {
+                try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+                let filename = "\(dateFilePrefix(for: Date())).jsonl"
+                let fileURL = directoryURL.appendingPathComponent(filename)
+
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.withoutEscapingSlashes]
+                let jsonData = try encoder.encode(record)
+                var lineData = jsonData
+                lineData.append(0x0A) // '\n'
+
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    let handle = try FileHandle(forWritingTo: fileURL)
+                    defer { try? handle.close() }
+                    try handle.seekToEnd()
+                    try handle.write(contentsOf: lineData)
+                } else {
+                    try lineData.write(to: fileURL, options: .atomic)
+                }
+            } catch {
+                print("⚠️ DictationTranscriptArchive: failed to write jsonl record: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    static func transcriptsDirectoryURL() -> URL? {
+        guard let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        return appSupportURL
+            .appendingPathComponent("Clicky", isDirectory: true)
+            .appendingPathComponent("DictationTranscripts", isDirectory: true)
+    }
+
+    private static func dateFilePrefix(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
 }
 
 @MainActor
@@ -220,10 +299,13 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     private static let recordedAudioPowerHistoryLength = 44
     private static let recordedAudioPowerHistoryBaselineLevel: CGFloat = 0.02
     private static let recordedAudioPowerHistorySampleIntervalSeconds: TimeInterval = 0.07
+    private static let transcriptCleanupDefaultsKey = "clicky_dictation_llm_cleanup_enabled"
 
     @Published private(set) var isRecordingFromMicrophoneButton = false
     @Published private(set) var isRecordingFromKeyboardShortcut = false
     @Published private(set) var isKeyboardShortcutSessionActiveOrFinalizing = false
+    @Published private(set) var isSystemWideDictationActive = false
+    @Published private(set) var isHandsFreeDictationActive = false
     @Published private(set) var isFinalizingTranscript = false
     @Published private(set) var isPreparingToRecord = false
     @Published private(set) var currentAudioPowerLevel: CGFloat = 0
@@ -234,14 +316,25 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     @Published private(set) var microphoneButtonRecordingStartedAt: Date?
     @Published private(set) var transcriptionProviderDisplayName = ""
     @Published var lastErrorMessage: String?
+    @Published private(set) var lastSalvagedTranscript: String?
     @Published private(set) var currentPermissionProblem: BuddyDictationPermissionProblem?
 
+    @Published var isTranscriptCleanupEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isTranscriptCleanupEnabled, forKey: Self.transcriptCleanupDefaultsKey)
+        }
+    }
+
     var isDictationInProgress: Bool {
-        isPreparingToRecord || isRecordingFromMicrophoneButton || isRecordingFromKeyboardShortcut || isFinalizingTranscript
+        isPreparingToRecord
+            || isRecordingFromMicrophoneButton
+            || isRecordingFromKeyboardShortcut
+            || isSystemWideDictationActive
+            || isFinalizingTranscript
     }
 
     var isActivelyRecordingAudio: Bool {
-        isRecordingFromMicrophoneButton || isRecordingFromKeyboardShortcut
+        isRecordingFromMicrophoneButton || isRecordingFromKeyboardShortcut || isSystemWideDictationActive
     }
 
     var isMicrophoneButtonActivelyRecordingAudio: Bool {
@@ -262,11 +355,13 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         return AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined
     }
 
-    private let transcriptionProvider: any BuddyTranscriptionProvider
+    private var transcriptionProvider: any BuddyTranscriptionProvider
     private let audioEngine = AVAudioEngine()
+    private let unifiedLLMClient = UnifiedLLMClient()
     private var activeTranscriptionSession: (any BuddyStreamingTranscriptionSession)?
     private var activeStartSource: BuddyDictationStartSource?
     private var draftCallbacks: BuddyDictationDraftCallbacks?
+    private var activeSystemWideTargetContext: SystemWideTargetContext?
     private var draftTextBeforeCurrentDictation = ""
     private var latestRecognizedText = ""
     private var shouldAutomaticallySubmitFinalDraft = false
@@ -276,6 +371,8 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     private var contextualKeyterms: [String] = []
     private var lastRecordedAudioPowerSampleDate = Date.distantPast
     private var activePermissionRequestTask: Task<Bool, Never>?
+    private var shortcutMonitorCancellable: AnyCancellable?
+    nonisolated(unsafe) private var sleepObserver: NSObjectProtocol?
     /// Timestamp of the last completed permission request, used to debounce
     /// rapid follow-up requests that arrive before macOS updates its cache.
     private var lastPermissionRequestCompletedAt: Date?
@@ -284,11 +381,54 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         let transcriptionProvider = BuddyTranscriptionProviderFactory.makeDefaultProvider()
         self.transcriptionProvider = transcriptionProvider
         self.transcriptionProviderDisplayName = transcriptionProvider.displayName
+        self.isTranscriptCleanupEnabled = UserDefaults.standard.bool(forKey: Self.transcriptCleanupDefaultsKey)
         super.init()
+
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleSystemSleepInterruption()
+            }
+        }
+    }
+
+    deinit {
+        if let sleepObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver)
+        }
     }
 
     func updateContextualKeyterms(_ contextualKeyterms: [String]) {
         self.contextualKeyterms = contextualKeyterms
+    }
+
+    /// Binds `dictationHold`, `handsFreeDictation`, and `escapeInterrupted` slots
+    /// from a `GlobalPushToTalkShortcutMonitor` to system-wide Type Anywhere dictation.
+    func attachShortcutMonitor(_ monitor: GlobalPushToTalkShortcutMonitor) {
+        shortcutMonitorCancellable?.cancel()
+        shortcutMonitorCancellable = monitor.slotEventPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self else { return }
+                switch event {
+                case .pressed(let slot) where slot == .dictationHold:
+                    Task { await self.startSystemWideDictation(handsFree: false) }
+                case .released(let slot) where slot == .dictationHold:
+                    self.stopSystemWideDictation()
+                case .triggered(let slot) where slot == .handsFreeDictation:
+                    Task { await self.toggleHandsFreeSystemWideDictation() }
+                case .escapeInterrupted:
+                    if self.isDictationInProgress {
+                        self.salvagePartialTranscriptToClipboardIfNeeded(reason: "escape")
+                        self.cancelCurrentDictation(preserveDraftText: true)
+                    }
+                default:
+                    break
+                }
+            }
     }
 
     func startPersistentDictationFromMicrophoneButton(
@@ -321,6 +461,35 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         )
     }
 
+    func startSystemWideDictation(handsFree: Bool = false) async {
+        let targetContext = Self.captureSystemWideTargetContext()
+        activeSystemWideTargetContext = targetContext
+
+        await startPushToTalk(
+            startSource: handsFree ? .systemWideHandsFree : .systemWideHold,
+            currentDraftText: "",
+            updateDraftText: { _ in },
+            submitDraftText: { _ in },
+            shouldAutomaticallySubmitFinalDraftOnStop: true
+        )
+    }
+
+    func stopSystemWideDictation() {
+        if activeStartSource == .systemWideHold {
+            stopPushToTalk(expectedStartSource: .systemWideHold)
+        } else if activeStartSource == .systemWideHandsFree {
+            stopPushToTalk(expectedStartSource: .systemWideHandsFree)
+        }
+    }
+
+    func toggleHandsFreeSystemWideDictation() async {
+        if isHandsFreeDictationActive || activeStartSource == .systemWideHandsFree {
+            stopPushToTalk(expectedStartSource: .systemWideHandsFree)
+        } else if !isDictationInProgress {
+            await startSystemWideDictation(handsFree: true)
+        }
+    }
+
     func stopPersistentDictationFromMicrophoneButton() {
         stopPushToTalk(expectedStartSource: .microphoneButton)
     }
@@ -350,6 +519,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     }
 
     func requestInitialPushToTalkPermissionsIfNeeded() async {
+        refreshTranscriptionProvider()
         guard needsInitialPermissionPrompt else { return }
         guard !isDictationInProgress else { return }
 
@@ -362,8 +532,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         do {
             try await Task.sleep(for: .milliseconds(200))
         } catch {
-            // If the task is cancelled while we are waiting for macOS to bring
-            // the app forward, we can safely continue into the permission check.
+            // Safely continue into permission check.
         }
 
         let hasPermissions = await requestMicrophoneAndSpeechPermissionsWithoutDuplicatePrompts()
@@ -372,6 +541,12 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         if hasPermissions {
             lastErrorMessage = nil
         }
+    }
+
+    private func refreshTranscriptionProvider() {
+        let resolved = BuddyTranscriptionProviderFactory.makeDefaultProvider()
+        self.transcriptionProvider = resolved
+        self.transcriptionProviderDisplayName = resolved.displayName
     }
 
     private func startPushToTalk(
@@ -383,17 +558,18 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     ) async {
         guard !isDictationInProgress else { return }
 
+        refreshTranscriptionProvider()
         print("🎙️ BuddyDictationManager: start requested (\(startSource))")
 
-        if needsInitialPermissionPrompt {
+        let isSystemWideSource = startSource == .systemWideHold || startSource == .systemWideHandsFree
+        if needsInitialPermissionPrompt && !isSystemWideSource {
             print("🎙️ BuddyDictationManager: requesting initial permissions")
             NSApplication.shared.activate(ignoringOtherApps: true)
 
             do {
                 try await Task.sleep(for: .milliseconds(200))
             } catch {
-                // If the task is cancelled while the app is being activated,
-                // we can safely continue into the permission request.
+                // Continue into permission request.
             }
         }
 
@@ -407,11 +583,13 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         guard await requestMicrophoneAndSpeechPermissionsWithoutDuplicatePrompts() else {
             print("🎙️ BuddyDictationManager: permissions missing or denied")
             isPreparingToRecord = false
+            activeSystemWideTargetContext = nil
             return
         }
         guard !Task.isCancelled else {
             print("🎙️ BuddyDictationManager: start cancelled (shortcut released during permission check)")
             isPreparingToRecord = false
+            activeSystemWideTargetContext = nil
             return
         }
         guard pendingStartRequestIdentifier == startRequestIdentifier else {
@@ -433,6 +611,8 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         isRecordingFromMicrophoneButton = startSource == .microphoneButton
         isRecordingFromKeyboardShortcut = startSource == .keyboardShortcut
         isKeyboardShortcutSessionActiveOrFinalizing = startSource == .keyboardShortcut
+        isSystemWideDictationActive = isSystemWideSource
+        isHandsFreeDictationActive = startSource == .systemWideHandsFree
         currentAudioPowerLevel = 0
         recordedAudioPowerHistory = Array(
             repeating: Self.recordedAudioPowerHistoryBaselineLevel,
@@ -486,6 +666,8 @@ final class BuddyDictationManager: NSObject, ObservableObject {
 
         isRecordingFromMicrophoneButton = false
         isRecordingFromKeyboardShortcut = false
+        isSystemWideDictationActive = false
+        isHandsFreeDictationActive = false
         isFinalizingTranscript = true
 
         let finalTranscriptFallbackDelaySeconds = activeTranscriptionSession?.finalTranscriptFallbackDelaySeconds
@@ -570,12 +752,40 @@ final class BuddyDictationManager: NSObject, ObservableObject {
             )
         } else {
             print("❌ Buddy dictation error (\(transcriptionProvider.displayName)): \(error)")
+            salvagePartialTranscriptToClipboardIfNeeded(reason: "error")
             lastErrorMessage = userFacingErrorMessage(
                 from: error,
                 fallback: "couldn't transcribe that. try again."
             )
             cancelCurrentDictation(preserveDraftText: false)
         }
+    }
+
+    private func handleSystemSleepInterruption() {
+        guard isDictationInProgress else { return }
+        salvagePartialTranscriptToClipboardIfNeeded(reason: "sleep")
+        cancelCurrentDictation(preserveDraftText: true)
+    }
+
+    private func salvagePartialTranscriptToClipboardIfNeeded(reason: String) {
+        let trimmedPartial = latestRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPartial.isEmpty else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(trimmedPartial, forType: .string)
+        lastSalvagedTranscript = trimmedPartial
+
+        let isSystemWide = activeStartSource == .systemWideHold || activeStartSource == .systemWideHandsFree
+        archiveTranscriptRecord(
+            rawText: trimmedPartial,
+            finalText: trimmedPartial,
+            mode: isSystemWide ? "systemWide" : "inApp",
+            targetAppBundleID: activeSystemWideTargetContext?.bundleIdentifier,
+            wasInterrupted: true
+        )
+
+        print("📋 BuddyDictationManager: salvaged partial transcript to clipboard on \(reason) (\(trimmedPartial.count) chars)")
     }
 
     private func finishCurrentDictationSessionIfNeeded(shouldSubmitFinalDraft: Bool) {
@@ -585,13 +795,11 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         finalizeFallbackWorkItem?.cancel()
         finalizeFallbackWorkItem = nil
 
-        let finalDraftText = composeDraftText(withTranscribedText: latestRecognizedText)
-        let finalTranscriptText = latestRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let capturedStartSource = activeStartSource
+        let capturedTargetContext = activeSystemWideTargetContext
+        let rawTranscriptText = latestRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let capturedDraftPrefix = draftTextBeforeCurrentDictation
         let currentDraftCallbacks = draftCallbacks
-
-        if !shouldSubmitFinalDraft && !finalDraftText.isEmpty {
-            currentDraftCallbacks?.updateDraftText(finalDraftText)
-        }
 
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -599,31 +807,320 @@ final class BuddyDictationManager: NSObject, ObservableObject {
 
         resetSessionState()
 
-        guard shouldSubmitFinalDraft else { return }
-        guard !finalTranscriptText.isEmpty else { return }
+        guard !rawTranscriptText.isEmpty else { return }
 
-        currentDraftCallbacks?.submitDraftText(finalDraftText)
+        let isSystemWide = capturedStartSource == .systemWideHold || capturedStartSource == .systemWideHandsFree
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            let finalTranscriptText: String
+            if self.isTranscriptCleanupEnabled {
+                finalTranscriptText = await self.cleanupTranscriptWithLLMIfPossible(rawTranscriptText)
+            } else {
+                finalTranscriptText = rawTranscriptText
+            }
+
+            self.archiveTranscriptRecord(
+                rawText: rawTranscriptText,
+                finalText: finalTranscriptText,
+                mode: isSystemWide ? "systemWide" : "inApp",
+                targetAppBundleID: capturedTargetContext?.bundleIdentifier,
+                wasInterrupted: false
+            )
+
+            if isSystemWide {
+                await self.insertTextAtCurrentSystemCursor(
+                    finalTranscriptText,
+                    targetContext: capturedTargetContext
+                )
+                return
+            }
+
+            let finalDraftText = Self.composeDraftText(
+                existingDraft: capturedDraftPrefix,
+                withTranscribedText: finalTranscriptText
+            )
+
+            if !shouldSubmitFinalDraft && !finalDraftText.isEmpty {
+                currentDraftCallbacks?.updateDraftText(finalDraftText)
+            }
+
+            guard shouldSubmitFinalDraft else { return }
+            currentDraftCallbacks?.submitDraftText(finalDraftText)
+        }
+    }
+
+    // MARK: - Optional LLM Transcript Cleanup
+
+    private func cleanupTranscriptWithLLMIfPossible(_ rawText: String) async -> String {
+        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return rawText }
+
+        let cleanupSystemPrompt = """
+        Clean up this raw speech-to-text dictation transcript. Fix punctuation, capitalization, and obvious filler words (like "um", "uh") while preserving the speaker's exact meaning, wording, technical terms, and original language. Return ONLY the cleaned transcript text with no quotes or commentary.
+        """
+
+        do {
+            let cleaned = try await unifiedLLMClient.completeText(
+                systemPrompt: cleanupSystemPrompt,
+                userPrompt: trimmed
+            )
+            let trimmedCleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmedCleaned.isEmpty ? trimmed : trimmedCleaned
+        } catch {
+            print("⚠️ BuddyDictationManager: LLM cleanup failed, keeping raw transcript: \(error.localizedDescription)")
+            return trimmed
+        }
+    }
+
+    // MARK: - Local JSONL Backup
+
+    private func archiveTranscriptRecord(
+        rawText: String,
+        finalText: String,
+        mode: String,
+        targetAppBundleID: String?,
+        wasInterrupted: Bool
+    ) {
+        let config = ClickyConfiguration.shared
+        let language = config.dictationAutoDetect ? "auto" : config.dictationLanguageCode
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let record = DictationTranscriptRecord(
+            id: UUID().uuidString,
+            timestampISO8601: timestamp,
+            provider: transcriptionProviderDisplayName,
+            languageCode: language,
+            mode: mode,
+            rawText: rawText,
+            finalText: finalText,
+            targetAppBundleID: targetAppBundleID,
+            wasInterrupted: wasInterrupted
+        )
+        DictationTranscriptArchive.appendRecord(record)
+    }
+
+    // MARK: - System-Wide Type Anywhere (AX Direct Insertion + PID-Targeted Cmd+V Paste + Clipboard Restore)
+
+    @discardableResult
+    func insertTextAtCurrentSystemCursor(_ text: String) async -> Bool {
+        let context = Self.captureSystemWideTargetContext()
+        return await insertTextAtCurrentSystemCursor(text, targetContext: context)
+    }
+
+    @discardableResult
+    private func insertTextAtCurrentSystemCursor(
+        _ text: String,
+        targetContext: SystemWideTargetContext?
+    ) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        let resolvedContext = targetContext ?? Self.captureSystemWideTargetContext()
+
+        // 1. Try Accessibility direct insertion at caret (zero clipboard disruption)
+        if let focusedElement = resolvedContext.focusedElement,
+           resolvedContext.isEditableTextElement,
+           Self.tryInsertViaAccessibility(trimmed, into: focusedElement) {
+            return true
+        }
+
+        // 2. Fallback: PID-targeted Cmd+V paste with full clipboard snapshot & restore
+        return await pasteWithClipboardRestore(trimmed, targetPID: resolvedContext.processIdentifier)
+    }
+
+    private static func captureSystemWideTargetContext() -> SystemWideTargetContext {
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let selfPID = ProcessInfo.processInfo.processIdentifier
+        let targetPID: pid_t? = (frontApp != nil && frontApp?.processIdentifier != selfPID)
+            ? frontApp?.processIdentifier
+            : nil
+        let bundleID = targetPID != nil ? frontApp?.bundleIdentifier : nil
+
+        guard AXIsProcessTrusted() else {
+            return SystemWideTargetContext(
+                processIdentifier: targetPID,
+                bundleIdentifier: bundleID,
+                focusedElement: nil,
+                isEditableTextElement: false
+            )
+        }
+
+        let systemWideElement = AXUIElementCreateSystemWide()
+        var focusedObject: CFTypeRef?
+        let copyStatus = AXUIElementCopyAttributeValue(
+            systemWideElement,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedObject
+        )
+
+        guard copyStatus == .success, let focusedObject else {
+            return SystemWideTargetContext(
+                processIdentifier: targetPID,
+                bundleIdentifier: bundleID,
+                focusedElement: nil,
+                isEditableTextElement: false
+            )
+        }
+
+        let focusedElement = focusedObject as! AXUIElement
+        let isEditable = isAXElementEditable(focusedElement)
+
+        return SystemWideTargetContext(
+            processIdentifier: targetPID,
+            bundleIdentifier: bundleID,
+            focusedElement: focusedElement,
+            isEditableTextElement: isEditable
+        )
+    }
+
+    private static func isAXElementEditable(_ element: AXUIElement) -> Bool {
+        var isSelectedTextSettable: DarwinBoolean = false
+        if AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &isSelectedTextSettable) == .success,
+           isSelectedTextSettable.boolValue {
+            return true
+        }
+
+        var isValueSettable: DarwinBoolean = false
+        if AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &isValueSettable) == .success,
+           isValueSettable.boolValue {
+            return true
+        }
+
+        var roleValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success,
+           let role = roleValue as? String {
+            let editableRoles: Set<String> = [
+                kAXTextFieldRole as String,
+                kAXTextAreaRole as String,
+                kAXComboBoxRole as String
+            ]
+            if editableRoles.contains(role) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private static func tryInsertViaAccessibility(_ text: String, into element: AXUIElement) -> Bool {
+        var isSelectedTextSettable: DarwinBoolean = false
+        let settableCheck = AXUIElementIsAttributeSettable(
+            element,
+            kAXSelectedTextAttribute as CFString,
+            &isSelectedTextSettable
+        )
+        guard settableCheck == .success, isSelectedTextSettable.boolValue else {
+            return false
+        }
+
+        let setStatus = AXUIElementSetAttributeValue(
+            element,
+            kAXSelectedTextAttribute as CFString,
+            text as CFString
+        )
+        return setStatus == .success
+    }
+
+    private func pasteWithClipboardRestore(_ text: String, targetPID: pid_t?) async -> Bool {
+        let pasteboard = NSPasteboard.general
+        let savedItems = snapshotPasteboard(pasteboard)
+
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        let injectedChangeCount = pasteboard.changeCount
+
+        let posted = Self.postCommandVPaste(toPID: targetPID)
+
+        // Allow the target app a brief window to read NSPasteboard before restoring
+        try? await Task.sleep(for: .milliseconds(250))
+
+        if pasteboard.changeCount == injectedChangeCount {
+            restorePasteboard(pasteboard, from: savedItems)
+        }
+
+        return posted
+    }
+
+    private func snapshotPasteboard(_ pasteboard: NSPasteboard) -> [PasteboardSnapshotItem] {
+        guard let items = pasteboard.pasteboardItems else { return [] }
+        return items.map { item in
+            let reps: [(NSPasteboard.PasteboardType, Data)] = item.types.compactMap { type in
+                guard let data = item.data(forType: type) else { return nil }
+                return (type, data)
+            }
+            return PasteboardSnapshotItem(representations: reps)
+        }
+    }
+
+    private func restorePasteboard(_ pasteboard: NSPasteboard, from snapshot: [PasteboardSnapshotItem]) {
+        pasteboard.clearContents()
+        guard !snapshot.isEmpty else { return }
+
+        let restoredItems: [NSPasteboardItem] = snapshot.compactMap { itemSnapshot in
+            guard !itemSnapshot.representations.isEmpty else { return nil }
+            let pasteboardItem = NSPasteboardItem()
+            for (type, data) in itemSnapshot.representations {
+                pasteboardItem.setData(data, forType: type)
+            }
+            return pasteboardItem
+        }
+
+        if !restoredItems.isEmpty {
+            pasteboard.writeObjects(restoredItems)
+        }
+    }
+
+    private static func postCommandVPaste(toPID targetPID: pid_t?) -> Bool {
+        let vKeyCode: CGKeyCode = 9 // kVK_ANSI_V
+        guard let eventSource = CGEventSource(stateID: .hidSystemState),
+              let keyDown = CGEvent(keyboardEventSource: eventSource, virtualKey: vKeyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: eventSource, virtualKey: vKeyCode, keyDown: false) else {
+            return false
+        }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+
+        if let targetPID, targetPID > 0 {
+            keyDown.postToPid(targetPID)
+            keyUp.postToPid(targetPID)
+        } else {
+            keyDown.post(tap: .cgSessionEventTap)
+            keyUp.post(tap: .cgSessionEventTap)
+        }
+        return true
     }
 
     private func composeDraftText(withTranscribedText transcribedText: String) -> String {
+        Self.composeDraftText(
+            existingDraft: draftTextBeforeCurrentDictation,
+            withTranscribedText: transcribedText
+        )
+    }
+
+    private static func composeDraftText(
+        existingDraft: String,
+        withTranscribedText transcribedText: String
+    ) -> String {
         let trimmedTranscriptText = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedTranscriptText.isEmpty else {
-            return draftTextBeforeCurrentDictation
+            return existingDraft
         }
 
-        let trimmedExistingDraftText = draftTextBeforeCurrentDictation
+        let trimmedExistingDraftText = existingDraft
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedExistingDraftText.isEmpty else {
             return trimmedTranscriptText
         }
 
-        if draftTextBeforeCurrentDictation.hasSuffix(" ") || draftTextBeforeCurrentDictation.hasSuffix("\n") {
-            return draftTextBeforeCurrentDictation + trimmedTranscriptText
+        if existingDraft.hasSuffix(" ") || existingDraft.hasSuffix("\n") {
+            return existingDraft + trimmedTranscriptText
         }
 
-        return draftTextBeforeCurrentDictation + " " + trimmedTranscriptText
+        return existingDraft + " " + trimmedTranscriptText
     }
 
     private func resetSessionState() {
@@ -631,6 +1128,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         activeTranscriptionSession = nil
         draftCallbacks = nil
         activeStartSource = nil
+        activeSystemWideTargetContext = nil
         draftTextBeforeCurrentDictation = ""
         latestRecognizedText = ""
         shouldAutomaticallySubmitFinalDraft = false
@@ -639,6 +1137,8 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         isRecordingFromMicrophoneButton = false
         isRecordingFromKeyboardShortcut = false
         isKeyboardShortcutSessionActiveOrFinalizing = false
+        isSystemWideDictationActive = false
+        isHandsFreeDictationActive = false
         isFinalizingTranscript = false
         currentAudioPowerLevel = 0
         recordedAudioPowerHistory = Array(
@@ -653,10 +1153,12 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         let baseKeyterms = [
             "makesomething",
             "Learning Buddy",
+            "Clicky",
             "Codex",
             "Claude",
             "Anthropic",
             "OpenAI",
+            "Gemini",
             "SwiftUI",
             "Xcode",
             "Vercel",
@@ -684,7 +1186,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         return orderedKeyterms
     }
 
-    private func updateAudioPowerLevel(from audioBuffer: AVAudioPCMBuffer) {
+    private nonisolated func updateAudioPowerLevel(from audioBuffer: AVAudioPCMBuffer) {
         guard let channelData = audioBuffer.floatChannelData else { return }
 
         let channelSamples = channelData[0]
@@ -700,7 +1202,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         let rootMeanSquare = sqrt(summedSquares / Float(frameCount))
         let boostedLevel = min(max(rootMeanSquare * 10.2, 0), 1)
 
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
 
             let smoothedAudioPowerLevel = max(
@@ -753,22 +1255,11 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         return true
     }
 
-    /// macOS can show the microphone/speech sheet again if we accidentally fan out
-    /// multiple permission requests before the first one finishes. We keep exactly
-    /// one in-flight request task so rapid repeat presses all await the same result.
-    ///
-    /// After the task completes, we skip re-requesting for a short cooldown period
-    /// so macOS has time to update its authorization cache. This prevents the
-    /// permission dialog from popping up again on rapid follow-up presses.
     private func requestMicrophoneAndSpeechPermissionsWithoutDuplicatePrompts() async -> Bool {
-        // If a permission request is already in-flight, reuse it.
         if let activePermissionRequestTask {
             return await activePermissionRequestTask.value
         }
 
-        // If we just finished a permission request very recently, skip re-requesting.
-        // macOS can briefly report .notDetermined even after the user tapped Allow,
-        // so we trust the cached result for a short window.
         if let lastPermissionRequestCompletedAt,
            Date().timeIntervalSince(lastPermissionRequestCompletedAt) < 1.0 {
             return AVCaptureDevice.authorizationStatus(for: .audio) != .denied

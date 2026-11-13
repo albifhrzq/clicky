@@ -2,51 +2,38 @@
 //  ElementLocationDetector.swift
 //  leanring-buddy
 //
-//  Uses Claude's Computer Use API to identify the screen location of UI elements
-//  in screenshots. When a user asks about a visible element (e.g., "click the
-//  blue button"), this detects the element's coordinates so the buddy can
-//  animate to it and point at it.
+//  Uses UnifiedLLMClient to identify the screen location of UI elements
+//  in screenshots across OpenCodex, Antigravity OAuth, BYOK, and Worker modes.
 //
 
 import AppKit
 import Foundation
 
-/// Detects the screen location of UI elements in screenshots using Claude's Computer Use API.
-/// The Computer Use tool definition activates Claude's specialized pixel-counting training,
-/// which is significantly more accurate than regular vision API coordinate extraction.
+/// Detects the screen location of UI elements in screenshots using `UnifiedLLMClient`.
 ///
 /// **Aspect ratio matching**: Instead of always resizing to 1024x768 (4:3), we pick the
-/// Anthropic-recommended resolution closest to the display's actual aspect ratio. Most
-/// Macs are 16:10 → 1280x800. This avoids distorting the image Claude sees, which
-/// significantly improves X-axis coordinate accuracy.
-class ElementLocationDetector {
-    private let apiKey: String
-    private let apiURL: URL
-    private let model: String
-    private let session: URLSession
+/// resolution closest to the display's actual aspect ratio. Most Macs are 16:10 -> 1280x800.
+/// This avoids distorting the image the model sees, which improves X-axis coordinate accuracy.
+@MainActor
+final class ElementLocationDetector {
+    private let llmClient: UnifiedLLMClient
+    private let modelOverride: String?
 
-    /// Anthropic-recommended resolutions for Computer Use, paired with their aspect ratios.
-    /// We pick the one closest to the actual display aspect ratio to avoid distortion.
-    /// Higher resolutions get downsampled by the API and degrade precision, so these
-    /// are intentionally small.
+    /// Supported downscaled resolutions paired with their aspect ratios.
     private static let supportedComputerUseResolutions: [(width: Int, height: Int, aspectRatio: Double)] = [
-        (1024, 768,  1024.0 / 768.0),  // 4:3   = 1.333 (legacy displays)
-        (1280, 800,  1280.0 / 800.0),  // 16:10  = 1.600 (MacBook Air, MacBook Pro, most Macs)
-        (1366, 768,  1366.0 / 768.0)   // ~16:9  = 1.779 (external monitors, ultrawide fallback)
+        (1024, 768,  1024.0 / 768.0),
+        (1280, 800,  1280.0 / 800.0),
+        (1366, 768,  1366.0 / 768.0)
     ]
 
-    init(apiKey: String, model: String = "claude-sonnet-4-6") {
-        self.apiKey = apiKey
-        self.apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
-        self.model = model
-
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 20
-        config.waitsForConnectivity = false
-        config.urlCache = nil
-        config.httpCookieStorage = nil
-        self.session = URLSession(configuration: config)
+    init(
+        apiKey: String = "",
+        model: String? = nil,
+        llmClient: UnifiedLLMClient = .shared
+    ) {
+        let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.modelOverride = (trimmedModel?.isEmpty == false) ? trimmedModel : nil
+        self.llmClient = llmClient
     }
 
     /// Detects the screen location of a UI element the user is asking about.
@@ -144,122 +131,94 @@ class ElementLocationDetector {
         return (width: bestWidth, height: bestHeight)
     }
 
-    /// Calls the Claude Computer Use API with a resized screenshot and user question.
-    /// Returns the raw coordinate from Claude's response in the declared resolution space, or nil.
+    /// Calls `UnifiedLLMClient` with a resized screenshot and user question.
+    /// Returns the raw coordinate from the model's response in the declared resolution space, or nil.
     private func callComputerUseAPI(
         resizedScreenshotData: Data,
         userQuestion: String,
         declaredDisplayWidth: Int,
         declaredDisplayHeight: Int
     ) async -> CGPoint? {
-        var request = URLRequest(url: apiURL)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 15
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // The beta header activates Computer Use capabilities and the specialized
-        // pixel-counting training that makes coordinate detection accurate.
-        request.setValue("computer-use-2025-11-24", forHTTPHeaderField: "anthropic-beta")
-
-        // Detect image media type (PNG vs JPEG)
-        let mediaType = detectImageMediaType(for: resizedScreenshotData)
-        let base64Screenshot = resizedScreenshotData.base64EncodedString()
+        let systemPrompt = """
+        You are a precise UI element coordinate detector.
+        The attached screenshot has exact pixel dimensions \(declaredDisplayWidth)x\(declaredDisplayHeight).
+        Coordinate origin (0, 0) is the top-left corner; x increases rightward (0 to \(declaredDisplayWidth)), y increases downward (0 to \(declaredDisplayHeight)).
+        If the user's question refers to a specific visible UI element (button, link, menu item, text field, icon, tab, etc.), return ONLY a JSON object with its exact center pixel coordinates:
+        {"x": 123, "y": 456}
+        If the question is purely conceptual (e.g., "what does HTML mean?") and has no specific UI element to point at, return ONLY:
+        {"x": null, "y": null}
+        Do not include markdown code fences or extra explanation.
+        """
 
         let userPrompt = """
         The user asked this question while looking at their screen: "\(userQuestion)"
-
-        Look at the screenshot. If there is a specific UI element (button, link, menu item, text field, icon, etc.) that the user should interact with or is asking about, click on that element.
-
-        If the question is purely conceptual (e.g., "what does HTML mean?") and there's no specific element to point to, just respond with text saying "no specific element".
+        Return the target UI element center coordinate in the \(declaredDisplayWidth)x\(declaredDisplayHeight) image as JSON {"x": int, "y": int}, or {"x": null, "y": null} if there is no specific element.
         """
 
-        let body: [String: Any] = [
-            "model": model,
-            "max_tokens": 256,
-            "tools": [
-                [
-                    "type": "computer_20251124",
-                    "name": "computer",
-                    "display_width_px": declaredDisplayWidth,
-                    "display_height_px": declaredDisplayHeight
-                ]
-            ],
-            "messages": [
-                [
-                    "role": "user",
-                    "content": [
-                        [
-                            "type": "image",
-                            "source": [
-                                "type": "base64",
-                                "media_type": mediaType,
-                                "data": base64Screenshot
-                            ]
-                        ],
-                        [
-                            "type": "text",
-                            "text": userPrompt
-                        ]
-                    ]
-                ]
-            ]
-        ]
+        let label = "Screen capture (image dimensions: \(declaredDisplayWidth)x\(declaredDisplayHeight) pixels)"
 
         do {
-            let bodyData = try JSONSerialization.data(withJSONObject: body)
-            request.httpBody = bodyData
-
-            let payloadMB = Double(bodyData.count) / 1_048_576.0
-            print("🎯 ElementLocationDetector: sending \(String(format: "%.1f", payloadMB))MB request " +
-                  "(declared \(declaredDisplayWidth)x\(declaredDisplayHeight))")
-
-            let (data, response) = try await session.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                let errorBody = String(data: data, encoding: .utf8) ?? "unknown"
-                print("⚠️ ElementLocationDetector: API error \(statusCode): \(errorBody.prefix(200))")
-                return nil
-            }
-
-            return parseCoordinateFromResponse(data: data)
-
+            let (responseText, _) = try await llmClient.analyzeImageStreaming(
+                images: [(data: resizedScreenshotData, label: label)],
+                systemPrompt: systemPrompt,
+                conversationHistory: [],
+                userPrompt: userPrompt,
+                modelOverride: modelOverride,
+                onTextChunk: { _ in }
+            )
+            return parseCoordinateFromResponse(text: responseText)
         } catch {
-            print("⚠️ ElementLocationDetector: request failed: \(error.localizedDescription)")
+            print("⚠️ ElementLocationDetector: UnifiedLLMClient request failed: \(error.localizedDescription)")
             return nil
         }
     }
 
-    /// Parses the Computer Use API response to extract click coordinates.
-    /// Claude returns a `tool_use` content block with `{"action": "left_click", "coordinate": [x, y]}`.
-    /// If Claude returns text instead (no element found), returns nil.
-    private func parseCoordinateFromResponse(data: Data) -> CGPoint? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let contentBlocks = json["content"] as? [[String: Any]] else {
-            print("⚠️ ElementLocationDetector: could not parse response JSON")
-            return nil
+    private func parseCoordinateFromResponse(text: String) -> CGPoint? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let cleaned = trimmed
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let jsonStart = cleaned.firstIndex(of: "{"),
+           let jsonEnd = cleaned.lastIndex(of: "}"),
+           jsonStart <= jsonEnd {
+            let jsonSubstring = String(cleaned[jsonStart...jsonEnd])
+            if let data = jsonSubstring.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let xNumber = obj["x"] as? NSNumber,
+                   let yNumber = obj["y"] as? NSNumber {
+                    let point = CGPoint(x: xNumber.doubleValue, y: yNumber.doubleValue)
+                    print("🎯 ElementLocationDetector: raw coordinate (\(Int(point.x)), \(Int(point.y)))")
+                    return point
+                }
+                if let coordinateArray = obj["coordinate"] as? [NSNumber],
+                   coordinateArray.count == 2 {
+                    let point = CGPoint(x: coordinateArray[0].doubleValue, y: coordinateArray[1].doubleValue)
+                    print("🎯 ElementLocationDetector: raw coordinate (\(Int(point.x)), \(Int(point.y)))")
+                    return point
+                }
+                if obj["x"] is NSNull || obj["y"] is NSNull {
+                    print("🎯 ElementLocationDetector: no specific element detected (conceptual question)")
+                    return nil
+                }
+            }
         }
 
-        // Look for a tool_use content block (Claude's Computer Use response format)
-        for block in contentBlocks {
-            guard let blockType = block["type"] as? String,
-                  blockType == "tool_use",
-                  let input = block["input"] as? [String: Any],
-                  let coordinate = input["coordinate"] as? [NSNumber],
-                  coordinate.count == 2 else {
-                continue
-            }
-
-            let x = CGFloat(coordinate[0].doubleValue)
-            let y = CGFloat(coordinate[1].doubleValue)
-            print("🎯 ElementLocationDetector: raw coordinate (\(Int(x)), \(Int(y)))")
+        let pointPattern = #"\[POINT:(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?::[^\]]*)?\]"#
+        if let regex = try? NSRegularExpression(pattern: pointPattern),
+           let match = regex.firstMatch(in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned)),
+           let xRange = Range(match.range(at: 1), in: cleaned),
+           let yRange = Range(match.range(at: 2), in: cleaned),
+           let x = Double(cleaned[xRange]),
+           let y = Double(cleaned[yRange]) {
+            print("🎯 ElementLocationDetector: raw [POINT] coordinate (\(Int(x)), \(Int(y)))")
             return CGPoint(x: x, y: y)
         }
 
-        // No tool_use block found — Claude responded with text (no element to point at)
-        print("🎯 ElementLocationDetector: no specific element detected (conceptual question)")
+        print("🎯 ElementLocationDetector: no specific element detected")
         return nil
     }
 
@@ -319,17 +278,5 @@ class ElementLocationDetector {
         }
 
         return jpegData
-    }
-
-    /// Detects MIME type by inspecting the first bytes of image data.
-    private func detectImageMediaType(for imageData: Data) -> String {
-        if imageData.count >= 4 {
-            let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
-            let firstFourBytes = [UInt8](imageData.prefix(4))
-            if firstFourBytes == pngSignature {
-                return "image/png"
-            }
-        }
-        return "image/jpeg"
     }
 }
