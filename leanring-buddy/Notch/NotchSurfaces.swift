@@ -1015,6 +1015,27 @@ struct NotchHeyClickyPeekSurface: View {
                 .toggleStyle(.switch)
                 .pointerCursor()
 
+                Toggle(isOn: $config.voiceWakeWordEnabled) {
+                    Text("Voice Wake Call")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(DS.Colors.textPrimary)
+                }
+                .toggleStyle(.switch)
+                .pointerCursor()
+
+                if config.voiceWakeWordEnabled {
+                    HStack {
+                        Text("Wake Phrase")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(DS.Colors.textSecondary)
+                        Spacer()
+                        TextField("hey clicky", text: $config.voiceWakePhrase)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11))
+                            .frame(width: 210)
+                    }
+                }
+
                 Toggle(isOn: $panelStyle.usesTransparentPanes) {
                     Text("Translucent Notch & Panels")
                         .font(.system(size: 11.5, weight: .medium))
