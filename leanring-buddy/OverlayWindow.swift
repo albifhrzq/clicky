@@ -9,6 +9,9 @@
 
 import AppKit
 import AVFoundation
+import Combine
+import Foundation
+import QuartzCore
 import SwiftUI
 
 class OverlayWindow: NSWindow {
@@ -106,6 +109,7 @@ struct BlueCursorView: View {
     let screenFrame: CGRect
     let isFirstAppearance: Bool
     @ObservedObject var companionManager: CompanionManager
+    @ObservedObject private var configuration = ClickyConfiguration.shared
 
     @State private var cursorPosition: CGPoint
     @State private var isCursorOnThisScreen: Bool
@@ -181,6 +185,19 @@ struct BlueCursorView: View {
         "found it!"
     ]
 
+    private var cursorColor: Color {
+        DS.Colors.cursorColor(named: configuration.cursorColorName)
+    }
+
+    private var shouldHideIdleTriangleForPreference: Bool {
+        configuration.hideFloatingCursor
+            && companionManager.voiceState == .idle
+            && buddyNavigationMode == .followingCursor
+            && (!showWelcome || welcomeText.isEmpty)
+            && !companionManager.showOnboardingVideo
+            && !companionManager.showOnboardingPrompt
+    }
+
     var body: some View {
         ZStack {
             // Nearly transparent background (helps with compositing)
@@ -195,8 +212,8 @@ struct BlueCursorView: View {
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(DS.Colors.overlayCursorBlue)
-                            .shadow(color: DS.Colors.overlayCursorBlue.opacity(0.5), radius: 6, x: 0, y: 0)
+                            .fill(cursorColor)
+                            .shadow(color: cursorColor.opacity(0.5), radius: 6, x: 0, y: 0)
                     )
                     .fixedSize()
                     .overlay(
@@ -239,8 +256,8 @@ struct BlueCursorView: View {
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(DS.Colors.overlayCursorBlue)
-                            .shadow(color: DS.Colors.overlayCursorBlue.opacity(0.5), radius: 6, x: 0, y: 0)
+                            .fill(cursorColor)
+                            .shadow(color: cursorColor.opacity(0.5), radius: 6, x: 0, y: 0)
                     )
                     .fixedSize()
                     .overlay(
@@ -269,9 +286,9 @@ struct BlueCursorView: View {
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(DS.Colors.overlayCursorBlue)
+                            .fill(cursorColor)
                             .shadow(
-                                color: DS.Colors.overlayCursorBlue.opacity(0.5 + (1.0 - navigationBubbleScale) * 1.0),
+                                color: cursorColor.opacity(0.5 + (1.0 - navigationBubbleScale) * 1.0),
                                 radius: 6 + (1.0 - navigationBubbleScale) * 16,
                                 x: 0, y: 0
                             )
@@ -303,12 +320,12 @@ struct BlueCursorView: View {
             // During navigation: NO implicit animation — the frame-by-frame bezier
             // timer controls position directly at 60fps for a smooth arc flight.
             Triangle()
-                .fill(DS.Colors.overlayCursorBlue)
+                .fill(cursorColor)
                 .frame(width: 16, height: 16)
                 .rotationEffect(.degrees(triangleRotationDegrees))
-                .shadow(color: DS.Colors.overlayCursorBlue, radius: 8 + (buddyFlightScale - 1.0) * 20, x: 0, y: 0)
+                .shadow(color: cursorColor, radius: 8 + (buddyFlightScale - 1.0) * 20, x: 0, y: 0)
                 .scaleEffect(buddyFlightScale)
-                .opacity(buddyIsVisibleOnThisScreen && (companionManager.voiceState == .idle || companionManager.voiceState == .responding) ? cursorOpacity : 0)
+                .opacity(!shouldHideIdleTriangleForPreference && buddyIsVisibleOnThisScreen && (companionManager.voiceState == .idle || companionManager.voiceState == .responding) ? cursorOpacity : 0)
                 .position(cursorPosition)
                 .animation(
                     buddyNavigationMode == .followingCursor
@@ -323,14 +340,17 @@ struct BlueCursorView: View {
                 )
 
             // Blue waveform — replaces the triangle while listening
-            BlueCursorWaveformView(audioPowerLevel: companionManager.currentAudioPowerLevel)
+            BlueCursorWaveformView(
+                audioPowerLevel: companionManager.currentAudioPowerLevel,
+                cursorColor: cursorColor
+            )
                 .opacity(buddyIsVisibleOnThisScreen && companionManager.voiceState == .listening ? cursorOpacity : 0)
                 .position(cursorPosition)
                 .animation(.spring(response: 0.2, dampingFraction: 0.6, blendDuration: 0), value: cursorPosition)
                 .animation(.easeIn(duration: 0.15), value: companionManager.voiceState)
 
             // Blue spinner — shown while the AI is processing (transcription + Claude + waiting for TTS)
-            BlueCursorSpinnerView()
+            BlueCursorSpinnerView(cursorColor: cursorColor)
                 .opacity(buddyIsVisibleOnThisScreen && companionManager.voiceState == .processing ? cursorOpacity : 0)
                 .position(cursorPosition)
                 .animation(.spring(response: 0.2, dampingFraction: 0.6, blendDuration: 0), value: cursorPosition)
@@ -708,6 +728,7 @@ struct BlueCursorView: View {
 /// the user is holding the push-to-talk shortcut and speaking.
 private struct BlueCursorWaveformView: View {
     let audioPowerLevel: CGFloat
+    let cursorColor: Color
 
     private let barCount = 5
     private let listeningBarProfile: [CGFloat] = [0.4, 0.7, 1.0, 0.7, 0.4]
@@ -717,7 +738,7 @@ private struct BlueCursorWaveformView: View {
             HStack(alignment: .center, spacing: 2) {
                 ForEach(0..<barCount, id: \.self) { barIndex in
                     RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(DS.Colors.overlayCursorBlue)
+                        .fill(cursorColor)
                         .frame(
                             width: 2,
                             height: barHeight(
@@ -727,7 +748,7 @@ private struct BlueCursorWaveformView: View {
                         )
                 }
             }
-            .shadow(color: DS.Colors.overlayCursorBlue.opacity(0.6), radius: 6, x: 0, y: 0)
+            .shadow(color: cursorColor.opacity(0.6), radius: 6, x: 0, y: 0)
             .animation(.linear(duration: 0.08), value: audioPowerLevel)
         }
     }
@@ -747,6 +768,7 @@ private struct BlueCursorWaveformView: View {
 /// A small blue spinning indicator that replaces the triangle cursor
 /// while the AI is processing a voice input.
 private struct BlueCursorSpinnerView: View {
+    let cursorColor: Color
     @State private var isSpinning = false
 
     var body: some View {
@@ -755,8 +777,8 @@ private struct BlueCursorSpinnerView: View {
             .stroke(
                 AngularGradient(
                     colors: [
-                        DS.Colors.overlayCursorBlue.opacity(0.0),
-                        DS.Colors.overlayCursorBlue
+                        cursorColor.opacity(0.0),
+                        cursorColor
                     ],
                     center: .center
                 ),
@@ -764,7 +786,7 @@ private struct BlueCursorSpinnerView: View {
             )
             .frame(width: 14, height: 14)
             .rotationEffect(.degrees(isSpinning ? 360 : 0))
-            .shadow(color: DS.Colors.overlayCursorBlue.opacity(0.6), radius: 6, x: 0, y: 0)
+            .shadow(color: cursorColor.opacity(0.6), radius: 6, x: 0, y: 0)
             .onAppear {
                 withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
                     isSpinning = true
@@ -783,6 +805,16 @@ class OverlayWindowManager {
     func showOverlay(onScreens screens: [NSScreen], companionManager: CompanionManager) {
         // Hide any existing overlays
         hideOverlay()
+
+        let isTransientlyActive = companionManager.voiceState != .idle
+            || companionManager.detectedElementScreenLocation != nil
+            || companionManager.showOnboardingVideo
+            || companionManager.showOnboardingPrompt
+            || !hasShownOverlayBefore
+
+        if ClickyConfiguration.shared.hideFloatingCursor && !isTransientlyActive {
+            return
+        }
 
         // Track if this is the first time showing overlay (welcome message)
         let isFirstAppearance = !hasShownOverlayBefore

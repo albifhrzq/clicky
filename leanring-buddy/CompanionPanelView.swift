@@ -3,76 +3,90 @@
 //  leanring-buddy
 //
 //  The SwiftUI content hosted inside the menu bar panel. Shows the companion
-//  voice status, push-to-talk shortcut, and quick settings. Designed to feel
-//  like Loom's recording panel — dark, rounded, minimal, and special.
+//  voice status, live connection pill, quick prompt input, model selector,
+//  window/settings launchers, permissions UI, and onboarding/quit controls.
 //
 
+import AppKit
 import AVFoundation
+import Combine
+import Foundation
 import SwiftUI
 
 struct CompanionPanelView: View {
     @ObservedObject var companionManager: CompanionManager
+
+    @ObservedObject private var configuration = ClickyConfiguration.shared
+    @ObservedObject private var openCodexService = OpenCodexService.shared
+    @ObservedObject private var oauthManager = AntigravityOAuthManager.shared
+    @ObservedObject private var panelStylePreference = ClickyPanelStylePreference.shared
+    @ObservedObject private var shortcutMonitor: GlobalPushToTalkShortcutMonitor
+
     @State private var emailInput: String = ""
-    @State private var showConnectionSettings: Bool = false
-    @ObservedObject private var config = ClickyConfiguration.shared
-    @ObservedObject private var openCodex = OpenCodexService.shared
+    @State private var quickPromptInput: String = ""
+    @State private var showingSettingsSheet: Bool = false
+    @State private var settingsInitialSection: HomeSpaceSettingsSection = .connection
+
+    init(companionManager: CompanionManager) {
+        self.companionManager = companionManager
+        self._shortcutMonitor = ObservedObject(wrappedValue: companionManager.globalPushToTalkShortcutMonitor)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             panelHeader
+
             Divider()
                 .background(DS.Colors.borderSubtle)
                 .padding(.horizontal, 16)
 
-            if showConnectionSettings {
-                connectionSettingsSection
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                Divider()
-                    .background(DS.Colors.borderSubtle)
-                    .padding(.horizontal, 16)
-            }
+            liveConnectionStatusPillRow
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
 
             permissionsCopySection
-                .padding(.top, 16)
+                .padding(.top, 12)
                 .padding(.horizontal, 16)
 
             if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
                 Spacer()
-                    .frame(height: 12)
+                    .frame(height: 10)
+
+                quickPromptSection
+                    .padding(.horizontal, 16)
+
+                Spacer()
+                    .frame(height: 10)
 
                 modelPickerRow
+                    .padding(.horizontal, 16)
+
+                Spacer()
+                    .frame(height: 10)
+
+                quickLaunchActionsRow
                     .padding(.horizontal, 16)
             }
 
             if !companionManager.allPermissionsGranted {
                 Spacer()
-                    .frame(height: 16)
+                    .frame(height: 14)
 
-                settingsSection
+                permissionsSection
                     .padding(.horizontal, 16)
             }
 
             if !companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
                 Spacer()
-                    .frame(height: 16)
+                    .frame(height: 14)
 
                 startButton
                     .padding(.horizontal, 16)
             }
 
-            // Show Clicky toggle — hidden for now
-            // if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
-            //     Spacer()
-            //         .frame(height: 16)
-            //
-            //     showClickyCursorToggleRow
-            //         .padding(.horizontal, 16)
-            // }
-
             if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
                 Spacer()
-                    .frame(height: 16)
+                    .frame(height: 12)
 
                 dmFarzaButton
                     .padding(.horizontal, 16)
@@ -91,14 +105,16 @@ struct CompanionPanelView: View {
         }
         .frame(width: 320)
         .background(panelBackground)
+        .sheet(isPresented: $showingSettingsSheet) {
+            compactSettingsSheet
+        }
     }
 
     // MARK: - Header
 
     private var panelHeader: some View {
-        HStack {
+        HStack(spacing: 8) {
             HStack(spacing: 8) {
-                // Animated status dot
                 Circle()
                     .fill(statusDotColor)
                     .frame(width: 8, height: 8)
@@ -115,15 +131,14 @@ struct CompanionPanelView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(DS.Colors.textTertiary)
 
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showConnectionSettings.toggle()
-                }
-            }) {
+            Button {
+                settingsInitialSection = .connection
+                showingSettingsSheet = true
+            } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(showConnectionSettings ? DS.Colors.accent : DS.Colors.textTertiary)
-                    .frame(width: 20, height: 20)
+                    .foregroundColor(showingSettingsSheet ? DS.Colors.accent : DS.Colors.textTertiary)
+                    .frame(width: 22, height: 22)
                     .background(
                         Circle()
                             .fill(Color.white.opacity(0.08))
@@ -132,13 +147,13 @@ struct CompanionPanelView: View {
             .buttonStyle(.plain)
             .pointerCursor()
 
-            Button(action: {
+            Button {
                 NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
-            }) {
+            } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(DS.Colors.textTertiary)
-                    .frame(width: 20, height: 20)
+                    .frame(width: 22, height: 22)
                     .background(
                         Circle()
                             .fill(Color.white.opacity(0.08))
@@ -148,7 +163,175 @@ struct CompanionPanelView: View {
             .pointerCursor()
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.vertical, 13)
+    }
+
+    // MARK: - Live Connection Status Pill
+
+    private var liveConnectionStatusPillRow: some View {
+        let status = connectionPillState
+
+        return Button {
+            settingsInitialSection = .connection
+            showingSettingsSheet = true
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(status.isReady ? DS.Colors.success : DS.Colors.warning)
+                    .frame(width: 7, height: 7)
+
+                Text(status.label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(DS.Colors.textPrimary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(status.detail)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .lineLimit(1)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(DS.Colors.textTertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.06))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(DS.Colors.borderSubtle, lineWidth: 0.6)
+            )
+        }
+        .buttonStyle(.plain)
+        .pointerCursor()
+    }
+
+    private var connectionPillState: (label: String, detail: String, isReady: Bool) {
+        switch configuration.mode {
+        case .openCodex:
+            if openCodexService.isHealthy {
+                return ("OpenCodex", "\(openCodexService.latencyMs) ms", true)
+            }
+            return ("OpenCodex", "Offline", false)
+        case .nativeAntigravity:
+            if oauthManager.isAuthenticated {
+                return ("Antigravity OAuth", oauthManager.userEmail ?? "Connected", true)
+            }
+            return ("Antigravity OAuth", "Sign In", false)
+        case .byok:
+            let hasAnyKey = !configuration.anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !configuration.openaiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !configuration.geminiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return ("BYOK Direct", hasAnyKey ? "Keys Ready" : "Add Key", hasAnyKey)
+        case .cloudflareWorker:
+            let isLocal = configuration.isLocalModeWithoutPaywall
+            return ("Worker Proxy", isLocal ? "Local" : "Cloud", !configuration.workerBaseURL.isEmpty)
+        }
+    }
+
+    // MARK: - Quick Prompt Input
+
+    private var quickPromptSection: some View {
+        let trimmedPrompt = quickPromptInput.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return HStack(spacing: 6) {
+            TextField("Ask Clicky anything...", text: $quickPromptInput)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundColor(DS.Colors.textPrimary)
+                .onSubmit {
+                    submitQuickPrompt()
+                }
+
+            Button {
+                submitQuickPrompt()
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(trimmedPrompt.isEmpty ? DS.Colors.textTertiary : DS.Colors.accent)
+            }
+            .buttonStyle(.plain)
+            .disabled(trimmedPrompt.isEmpty)
+            .pointerCursor(isEnabled: !trimmedPrompt.isEmpty)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                .fill(Color.white.opacity(0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                .stroke(DS.Colors.borderSubtle, lineWidth: 0.6)
+        )
+    }
+
+    private func submitQuickPrompt() {
+        let trimmedPrompt = quickPromptInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPrompt.isEmpty else { return }
+
+        quickPromptInput = ""
+        companionManager.submitTextPrompt(trimmedPrompt)
+        NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+    }
+
+    // MARK: - Window & Settings Launchers
+
+    private var quickLaunchActionsRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+                HeyClickyWindowController.shared.open(initialTab: .home)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "macwindow")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Open HeyClicky Window")
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundColor(DS.Colors.textOnAccent)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                        .fill(DS.Colors.accent)
+                )
+            }
+            .buttonStyle(.plain)
+            .pointerCursor()
+
+            Button {
+                NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+                HeyClickyWindowController.shared.open(initialTab: .settings)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Open Settings")
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                }
+                .foregroundColor(DS.Colors.textPrimary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                        .stroke(DS.Colors.borderSubtle, lineWidth: 0.6)
+                )
+            }
+            .buttonStyle(.plain)
+            .pointerCursor()
+        }
     }
 
     // MARK: - Permissions Copy
@@ -156,7 +339,9 @@ struct CompanionPanelView: View {
     @ViewBuilder
     private var permissionsCopySection: some View {
         if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
-            Text("Hold Control+Option to talk.")
+            let voiceBinding = shortcutMonitor.binding(for: .voiceHold)
+            let shortcutLabel = voiceBinding.displayText.isEmpty ? "Control+Option" : voiceBinding.displayText
+            Text("Hold \(shortcutLabel) to talk.")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(DS.Colors.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -176,7 +361,6 @@ struct CompanionPanelView: View {
                 .foregroundColor(DS.Colors.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if companionManager.hasCompletedOnboarding {
-            // Permissions were revoked after onboarding — tell user to re-grant
             VStack(alignment: .leading, spacing: 6) {
                 Text("Permissions needed")
                     .font(.system(size: 12, weight: .bold))
@@ -230,9 +414,9 @@ struct CompanionPanelView: View {
                                 .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
                         )
 
-                    Button(action: {
+                    Button {
                         companionManager.submitEmail(emailInput)
-                    }) {
+                    } label: {
                         Text("Submit")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(DS.Colors.textOnAccent)
@@ -250,9 +434,9 @@ struct CompanionPanelView: View {
                     .disabled(emailInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             } else {
-                Button(action: {
+                Button {
                     companionManager.triggerOnboarding()
-                }) {
+                } label: {
                     Text("Start")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(DS.Colors.textOnAccent)
@@ -271,7 +455,7 @@ struct CompanionPanelView: View {
 
     // MARK: - Permissions
 
-    private var settingsSection: some View {
+    private var permissionsSection: some View {
         VStack(spacing: 2) {
             Text("PERMISSIONS")
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -280,15 +464,12 @@ struct CompanionPanelView: View {
                 .padding(.bottom, 6)
 
             microphonePermissionRow
-
             accessibilityPermissionRow
-
             screenRecordingPermissionRow
 
             if companionManager.hasScreenRecordingPermission {
                 screenContentPermissionRow
             }
-
         }
     }
 
@@ -309,50 +490,32 @@ struct CompanionPanelView: View {
             Spacer()
 
             if isGranted {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(DS.Colors.success)
-                        .frame(width: 6, height: 6)
-                    Text("Granted")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(DS.Colors.success)
-                }
+                grantedBadge
             } else {
                 HStack(spacing: 6) {
-                    Button(action: {
-                        // Triggers the system accessibility prompt (AXIsProcessTrustedWithOptions)
-                        // on first attempt, then opens System Settings on subsequent attempts.
+                    Button {
                         WindowPositionManager.requestAccessibilityPermission()
-                    }) {
+                    } label: {
                         Text("Grant")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(DS.Colors.textOnAccent)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(DS.Colors.accent)
-                            )
+                            .background(Capsule().fill(DS.Colors.accent))
                     }
                     .buttonStyle(.plain)
                     .pointerCursor()
 
-                    Button(action: {
-                        // Reveals the app in Finder so the user can drag it into
-                        // the Accessibility list if it doesn't appear automatically
-                        // (common with unsigned dev builds).
+                    Button {
                         WindowPositionManager.revealAppInFinder()
                         WindowPositionManager.openAccessibilitySettings()
-                    }) {
+                    } label: {
                         Text("Find App")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(DS.Colors.textSecondary)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .stroke(DS.Colors.borderSubtle, lineWidth: 0.8)
-                            )
+                            .background(Capsule().stroke(DS.Colors.borderSubtle, lineWidth: 0.8))
                     }
                     .buttonStyle(.plain)
                     .pointerCursor()
@@ -387,30 +550,17 @@ struct CompanionPanelView: View {
             Spacer()
 
             if isGranted {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(DS.Colors.success)
-                        .frame(width: 6, height: 6)
-                    Text("Granted")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(DS.Colors.success)
-                }
+                grantedBadge
             } else {
-                Button(action: {
-                    // Triggers the native macOS screen recording prompt on first
-                    // attempt (auto-adds app to the list), then opens System Settings
-                    // on subsequent attempts.
+                Button {
                     WindowPositionManager.requestScreenRecordingPermission()
-                }) {
+                } label: {
                     Text("Grant")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(DS.Colors.textOnAccent)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(DS.Colors.accent)
-                        )
+                        .background(Capsule().fill(DS.Colors.accent))
                 }
                 .buttonStyle(.plain)
                 .pointerCursor()
@@ -436,27 +586,17 @@ struct CompanionPanelView: View {
             Spacer()
 
             if isGranted {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(DS.Colors.success)
-                        .frame(width: 6, height: 6)
-                    Text("Granted")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(DS.Colors.success)
-                }
+                grantedBadge
             } else {
-                Button(action: {
+                Button {
                     companionManager.requestScreenContentPermission()
-                }) {
+                } label: {
                     Text("Grant")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(DS.Colors.textOnAccent)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(DS.Colors.accent)
-                        )
+                        .background(Capsule().fill(DS.Colors.accent))
                 }
                 .buttonStyle(.plain)
                 .pointerCursor()
@@ -482,88 +622,22 @@ struct CompanionPanelView: View {
             Spacer()
 
             if isGranted {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(DS.Colors.success)
-                        .frame(width: 6, height: 6)
-                    Text("Granted")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(DS.Colors.success)
-                }
+                grantedBadge
             } else {
-                Button(action: {
-                    // Triggers the native macOS microphone permission dialog on
-                    // first attempt. If already denied, opens System Settings.
+                Button {
                     let status = AVCaptureDevice.authorizationStatus(for: .audio)
                     if status == .notDetermined {
                         AVCaptureDevice.requestAccess(for: .audio) { _ in }
-                    } else {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
-                }) {
-                    Text("Grant")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DS.Colors.textOnAccent)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(DS.Colors.accent)
-                        )
-                }
-                .buttonStyle(.plain)
-                .pointerCursor()
-            }
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func permissionRow(
-        label: String,
-        iconName: String,
-        isGranted: Bool,
-        settingsURL: String
-    ) -> some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image(systemName: iconName)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(isGranted ? DS.Colors.textTertiary : DS.Colors.warning)
-                    .frame(width: 16)
-
-                Text(label)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(DS.Colors.textSecondary)
-            }
-
-            Spacer()
-
-            if isGranted {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(DS.Colors.success)
-                        .frame(width: 6, height: 6)
-                    Text("Granted")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(DS.Colors.success)
-                }
-            } else {
-                Button(action: {
-                    if let url = URL(string: settingsURL) {
+                    } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
                         NSWorkspace.shared.open(url)
                     }
-                }) {
+                } label: {
                     Text("Grant")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(DS.Colors.textOnAccent)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(DS.Colors.accent)
-                        )
+                        .background(Capsule().fill(DS.Colors.accent))
                 }
                 .buttonStyle(.plain)
                 .pointerCursor()
@@ -572,325 +646,143 @@ struct CompanionPanelView: View {
         .padding(.vertical, 6)
     }
 
-
-
-    // MARK: - Show Clicky Cursor Toggle
-
-    private var showClickyCursorToggleRow: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image(systemName: "cursorarrow")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(DS.Colors.textTertiary)
-                    .frame(width: 16)
-
-                Text("Show Clicky")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(DS.Colors.textSecondary)
-            }
-
-            Spacer()
-
-            Toggle("", isOn: Binding(
-                get: { companionManager.isClickyCursorEnabled },
-                set: { companionManager.setClickyCursorEnabled($0) }
-            ))
-            .toggleStyle(.switch)
-            .labelsHidden()
-            .tint(DS.Colors.accent)
-            .scaleEffect(0.8)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var speechToTextProviderRow: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image(systemName: "mic.badge.waveform")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(DS.Colors.textTertiary)
-                    .frame(width: 16)
-
-                Text("Speech to Text")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(DS.Colors.textSecondary)
-            }
-
-            Spacer()
-
-            Text(companionManager.buddyDictationManager.transcriptionProviderDisplayName)
+    private var grantedBadge: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(DS.Colors.success)
+                .frame(width: 6, height: 6)
+            Text("Granted")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(DS.Colors.textTertiary)
+                .foregroundColor(DS.Colors.success)
         }
-        .padding(.vertical, 4)
     }
 
-    // MARK: - Model Picker
+    // MARK: - Model Picker (ClickyConfiguration.shared.selectedModel)
 
     private var modelPickerRow: some View {
-        HStack {
+        let modelChoices: [(id: String, label: String)] = {
+            if configuration.mode == .openCodex {
+                let openCodexPool = openCodexService.visionModels.isEmpty
+                    ? openCodexService.availableModels
+                    : openCodexService.visionModels
+                if !openCodexPool.isEmpty {
+                    return openCodexPool.map { ($0.id, $0.displayName) }
+                }
+            }
+            return [
+                ("google-antigravity/gemini-3.8-flash", "Gemini 3.8 Flash"),
+                ("claude-sonnet-4-6", "Claude Sonnet 4.6"),
+                ("claude-opus-4-6", "Claude Opus 4.6"),
+                ("gpt-4o", "GPT-4o"),
+                ("gemini-2.5-pro", "Gemini 2.5 Pro")
+            ]
+        }()
+
+        return HStack {
             Text("Model")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(DS.Colors.textSecondary)
 
             Spacer()
 
-            if config.mode == .openCodex {
-                Menu {
-                    ForEach(openCodex.availableModels, id: \.id) { model in
-                        Button(action: {
-                            config.selectedModel = model.id
-                            companionManager.setSelectedModel(model.id)
-                        }) {
-                            if config.selectedModel == model.id {
-                                Label(model.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(model.displayName)
-                            }
+            Menu {
+                ForEach(modelChoices, id: \.id) { choice in
+                    Button {
+                        configuration.selectedModel = choice.id
+                        companionManager.setSelectedModel(choice.id)
+                    } label: {
+                        if configuration.selectedModel == choice.id {
+                            Label(choice.label, systemImage: "checkmark")
+                        } else {
+                            Text(choice.label)
                         }
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(shortModelName(config.selectedModel))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(DS.Colors.textPrimary)
-                            .lineLimit(1)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 9))
-                            .foregroundColor(DS.Colors.textTertiary)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.white.opacity(0.08))
-                    )
                 }
-                .menuStyle(.borderlessButton)
-            } else {
-                HStack(spacing: 0) {
-                    modelOptionButton(label: "Sonnet", modelID: "claude-sonnet-4-6")
-                    modelOptionButton(label: "Opus", modelID: "claude-opus-4-6")
+            } label: {
+                HStack(spacing: 4) {
+                    Text(shortModelName(configuration.selectedModel))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(DS.Colors.textPrimary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9))
+                        .foregroundColor(DS.Colors.textTertiary)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
+                        .fill(Color.white.opacity(0.08))
                 )
             }
+            .menuStyle(.borderlessButton)
+            .pointerCursor()
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
     }
 
     private func shortModelName(_ fullID: String) -> String {
         if fullID.contains("/") {
-            return String(fullID.split(separator: "/").last ?? "")
+            return String(fullID.split(separator: "/").last ?? Substring(fullID))
         }
         return fullID
     }
 
-    // MARK: - Connection & Provider Settings
+    // MARK: - Compact Settings Sheet
 
-    private var connectionSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("CONNECTION & PROVIDER")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(DS.Colors.textTertiary)
-                .padding(.top, 4)
+    private var compactSettingsSheet: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Clicky Settings")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(DS.Colors.textPrimary)
 
-            Picker("Mode", selection: $config.mode) {
-                ForEach(ClickyConnectionMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
+                Spacer()
+
+                Button("Pop Out") {
+                    showingSettingsSheet = false
+                    NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+                    HeyClickyWindowController.shared.open(initialTab: .settings)
                 }
-            }
-            .pickerStyle(.menu)
-            .font(.system(size: 12))
-
-            switch config.mode {
-            case .openCodex:
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Circle()
-                            .fill(openCodex.isHealthy ? DS.Colors.success : DS.Colors.warning)
-                            .frame(width: 8, height: 8)
-                        Text(openCodex.isHealthy ? "Proxy Online (\(openCodex.latencyMs)ms)" : "Proxy Offline (127.0.0.1:10100)")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(openCodex.isHealthy ? DS.Colors.success : DS.Colors.warning)
-
-                        Spacer()
-
-                        Button(action: {
-                            Task { await openCodex.refresh() }
-                        }) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 10))
-                                .foregroundColor(DS.Colors.textTertiary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    HStack {
-                        Text("URL:")
-                            .font(.system(size: 11))
-                            .foregroundColor(DS.Colors.textTertiary)
-                            .frame(width: 40, alignment: .leading)
-                        TextField("http://127.0.0.1:10100/v1", text: $config.openCodexBaseURL)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 11))
-                            .padding(4)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(4)
-                    }
-
-                    HStack {
-                        Text("Token:")
-                            .font(.system(size: 11))
-                            .foregroundColor(DS.Colors.textTertiary)
-                            .frame(width: 40, alignment: .leading)
-                        SecureField("Optional Bearer Token", text: $config.openCodexAPIKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 11))
-                            .padding(4)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(4)
-                    }
-                }
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.03)))
-
-            case .byok:
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("Anthropic:")
-                            .font(.system(size: 10))
-                            .foregroundColor(DS.Colors.textTertiary)
-                            .frame(width: 65, alignment: .leading)
-                        SecureField("sk-ant-...", text: $config.anthropicAPIKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 10))
-                            .padding(4)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(4)
-                    }
-
-                    HStack {
-                        Text("OpenAI:")
-                            .font(.system(size: 10))
-                            .foregroundColor(DS.Colors.textTertiary)
-                            .frame(width: 65, alignment: .leading)
-                        SecureField("sk-...", text: $config.openaiAPIKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 10))
-                            .padding(4)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(4)
-                    }
-
-                    HStack {
-                        Text("ElevenLabs:")
-                            .font(.system(size: 10))
-                            .foregroundColor(DS.Colors.textTertiary)
-                            .frame(width: 65, alignment: .leading)
-                        SecureField("xi-...", text: $config.elevenLabsAPIKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 10))
-                            .padding(4)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(4)
-                    }
-
-                    HStack {
-                        Text("AssemblyAI:")
-                            .font(.system(size: 10))
-                            .foregroundColor(DS.Colors.textTertiary)
-                            .frame(width: 65, alignment: .leading)
-                        SecureField("Key...", text: $config.assemblyAIAPIKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 10))
-                            .padding(4)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(4)
-                    }
-                }
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.03)))
-
-            case .cloudflareWorker:
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Worker Proxy URL:")
-                        .font(.system(size: 10))
-                        .foregroundColor(DS.Colors.textTertiary)
-                    TextField("https://api.heyclicky.com", text: $config.workerBaseURL)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11))
-                        .padding(4)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(4)
-                }
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.03)))
-
-            case .nativeAntigravity:
-                VStack(alignment: .leading, spacing: 6) {
-                    if AntigravityOAuthManager.shared.isAuthenticated {
-                        HStack {
-                            Circle().fill(DS.Colors.success).frame(width: 8, height: 8)
-                            Text("Signed in: \(AntigravityOAuthManager.shared.userEmail ?? "Google Account")")
-                                .font(.system(size: 11))
-                                .foregroundColor(DS.Colors.textPrimary)
-                        }
-                        Button("Sign Out") {
-                            AntigravityOAuthManager.shared.signOut()
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundColor(DS.Colors.warning)
-                    } else {
-                        Text("Direct OAuth with Google Cloud Code Assist")
-                            .font(.system(size: 11))
-                            .foregroundColor(DS.Colors.textTertiary)
-                    }
-                }
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.03)))
-            }
-
-            Toggle("Tactile Sound Effects", isOn: $config.soundEffectsEnabled)
-                .font(.system(size: 11))
-                .foregroundColor(DS.Colors.textSecondary)
-        }
-    }
-
-    private func modelOptionButton(label: String, modelID: String) -> some View {
-        let isSelected = companionManager.selectedModel == modelID
-        return Button(action: {
-            companionManager.setSelectedModel(modelID)
-        }) {
-            Text(label)
+                .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(isSelected ? DS.Colors.textPrimary : DS.Colors.textTertiary)
+                .foregroundColor(DS.Colors.accentText)
+                .pointerCursor()
+
+                Button("Done") {
+                    showingSettingsSheet = false
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(DS.Colors.textPrimary)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
-                )
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.white.opacity(0.1)))
+                .pointerCursor()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(DS.Colors.surface1)
+
+            Divider().background(DS.Colors.borderSubtle)
+
+            HomeSpaceSettingsPage(
+                companionManager: companionManager,
+                initialSection: settingsInitialSection
+            )
         }
-        .buttonStyle(.plain)
-        .pointerCursor()
+        .frame(width: 440, height: 520)
+        .background(DS.Colors.background)
     }
 
     // MARK: - DM Farza Button
 
     private var dmFarzaButton: some View {
-        Button(action: {
+        Button {
             if let url = URL(string: "https://x.com/farzatv") {
                 NSWorkspace.shared.open(url)
             }
-        }) {
+        } label: {
             HStack(spacing: 8) {
                 Image(systemName: "bubble.left.fill")
                     .font(.system(size: 12, weight: .medium))
@@ -906,7 +798,7 @@ struct CompanionPanelView: View {
             .foregroundColor(DS.Colors.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
                     .fill(Color.white.opacity(0.06))
@@ -924,9 +816,9 @@ struct CompanionPanelView: View {
 
     private var footerSection: some View {
         HStack {
-            Button(action: {
+            Button {
                 NSApp.terminate(nil)
-            }) {
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "power")
                         .font(.system(size: 11, weight: .medium))
@@ -941,9 +833,9 @@ struct CompanionPanelView: View {
             if companionManager.hasCompletedOnboarding {
                 Spacer()
 
-                Button(action: {
+                Button {
                     companionManager.replayOnboarding()
-                }) {
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "play.circle")
                             .font(.system(size: 11, weight: .medium))
@@ -961,10 +853,12 @@ struct CompanionPanelView: View {
     // MARK: - Visual Helpers
 
     private var panelBackground: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(DS.Colors.background)
-            .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
-            .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+        ClickyPanelBackground(
+            cornerRadius: 12,
+            usesTranslucentMaterial: panelStylePreference.usesTransparentPanes
+        )
+        .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
+        .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
     }
 
     private var statusDotColor: Color {
@@ -999,5 +893,4 @@ struct CompanionPanelView: View {
             return "Responding"
         }
     }
-
 }

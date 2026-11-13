@@ -7,8 +7,10 @@
 //  interaction states are defined here as the single source of truth.
 //
 
+import Foundation
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: - Design System Namespace
 
@@ -20,43 +22,66 @@ enum DS {
 
     enum Colors {
 
+        private nonisolated static func nsColor(hex: String) -> NSColor {
+            let hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "#", with: "")
+
+            var rgbValue: UInt64 = 0
+            Scanner(string: hexSanitized).scanHexInt64(&rgbValue)
+
+            let red = CGFloat((rgbValue & 0xFF0000) >> 16) / 255.0
+            let green = CGFloat((rgbValue & 0x00FF00) >> 8) / 255.0
+            let blue = CGFloat(rgbValue & 0x0000FF) / 255.0
+
+            return NSColor(srgbRed: red, green: green, blue: blue, alpha: 1.0)
+        }
+
+        private static func adaptive(darkHex: String, lightHex: String) -> Color {
+            let dynamicColor = NSColor(name: nil) { appearance in
+                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                return Self.nsColor(hex: isDark ? darkHex : lightHex)
+            }
+            return Color(nsColor: dynamicColor)
+        }
+
         // ── Backgrounds ──────────────────────────────────────────────
         // Layered surfaces from deepest to most elevated.
-        // Higher surfaces are lighter, creating a sense of depth.
+        // In Dark mode, higher surfaces are lighter; in Light mode, surface1 is
+        // crisp white and higher elevation layers step gently darker.
 
         /// The deepest background — used for the main app window fill.
-        static let background = Color(hex: "#101211")
+        static let background = adaptive(darkHex: "#101211", lightHex: "#F4F5F5")
 
         /// First elevation layer — used for cards, sidebar, top bar backgrounds.
-        static let surface1 = Color(hex: "#171918")
+        static let surface1 = adaptive(darkHex: "#171918", lightHex: "#FFFFFF")
 
         /// Second elevation layer — used for input fields, elevated cards, chat bubbles.
-        static let surface2 = Color(hex: "#202221")
+        static let surface2 = adaptive(darkHex: "#202221", lightHex: "#EEF0EF")
 
         /// Third elevation layer — used for hover backgrounds on interactive elements.
-        static let surface3 = Color(hex: "#272A29")
+        static let surface3 = adaptive(darkHex: "#272A29", lightHex: "#E4E7E6")
 
         /// Fourth elevation layer — used for active/pressed states on interactive elements.
-        static let surface4 = Color(hex: "#2E3130")
+        static let surface4 = adaptive(darkHex: "#2E3130", lightHex: "#D9DDDD")
 
         // ── Borders ──────────────────────────────────────────────────
 
         /// Subtle border — used for card outlines, dividers, input field borders.
-        static let borderSubtle = Color(hex: "#373B39")
+        static let borderSubtle = adaptive(darkHex: "#373B39", lightHex: "#D5D9D7")
 
         /// Strong border — used for focused inputs, hovered card outlines.
-        static let borderStrong = Color(hex: "#444947")
+        static let borderStrong = adaptive(darkHex: "#444947", lightHex: "#B4BBB8")
 
         // ── Text ─────────────────────────────────────────────────────
 
         /// Primary text — main body text, titles, headings.
-        static let textPrimary = Color(hex: "#ECEEED")
+        static let textPrimary = adaptive(darkHex: "#ECEEED", lightHex: "#141716")
 
         /// Secondary text — descriptions, hints, muted labels.
-        static let textSecondary = Color(hex: "#ADB5B2")
+        static let textSecondary = adaptive(darkHex: "#ADB5B2", lightHex: "#4F5754")
 
         /// Tertiary text — very muted, used for section labels, timestamps, disabled text.
-        static let textTertiary = Color(hex: "#6B736F")
+        static let textTertiary = adaptive(darkHex: "#6B736F", lightHex: "#6E7773")
 
         /// Text used on top of the accent fill (#2563eb blue), like the primary button label.
         /// White on #2563eb achieves ~5.1:1 contrast — WCAG AA compliant.
@@ -99,9 +124,9 @@ enum DS {
         /// #1d4ed8 → ~6.5:1 contrast with white text (WCAG AA+).
         static let accentHover = blue700
 
-        /// Accent text — bright blue used for accent-colored text and icons
-        /// on dark backgrounds (links, active nav items, highlighted labels).
-        static let accentText = blue400
+        /// Accent text — adaptive blue used for accent-colored text and icons
+        /// (links, active nav items, highlighted labels).
+        static let accentText = adaptive(darkHex: "#60a5fa", lightHex: "#2563eb")
 
         /// Very subtle accent tint — used for selected item backgrounds (e.g. current step
         /// in the sidebar). Low opacity so it doesn't overpower.
@@ -115,8 +140,8 @@ enum DS {
         /// Destructive hover state.
         static let destructiveHover = Color(hex: "#F2555A")   // Radix Red 10
 
-        /// Destructive used for text on dark backgrounds (brighter for readability).
-        static let destructiveText = Color(hex: "#FF6369")    // Radix Red 11
+        /// Destructive used for text (adaptive for high contrast on dark & light surfaces).
+        static let destructiveText = adaptive(darkHex: "#FF6369", lightHex: "#CE2C31")
 
         /// Success — checkmarks, granted status, completion indicators.
         /// Independent green so success states are visually distinct from the blue accent.
@@ -125,16 +150,16 @@ enum DS {
         /// Warning — caution messages, manual verification failure explanations.
         static let warning = Color(hex: "#FFB224")            // Radix Amber 9
 
-        /// Warning text — brighter variant for text on dark backgrounds.
-        static let warningText = Color(hex: "#F1A10D")        // Radix Amber 11
+        /// Warning text — adaptive variant for high contrast on dark & light surfaces.
+        static let warningText = adaptive(darkHex: "#F1A10D", lightHex: "#AD5700")
 
         /// Info/feature highlight — used for prompt card headers, code highlights.
-        /// Lighter than accentText so informational elements are visually distinct
-        /// from interactive accent-colored elements.
-        static let info = Color(hex: "#70B8FF")               // Radix Blue 9
+        /// Lighter than accentText in dark mode and deep blue in light mode so informational
+        /// elements remain visually distinct and legible.
+        static let info = adaptive(darkHex: "#70B8FF", lightHex: "#0D74CE")
 
-        /// Inline code text color — slightly brighter blue for monospace code snippets.
-        static let codeText = Color(hex: "#9DC2FF")           // Radix Blue 11 variant
+        /// Inline code text color — high-contrast blue for monospace code snippets.
+        static let codeText = adaptive(darkHex: "#9DC2FF", lightHex: "#1E40AF")
 
         // ── Overlay Cursor ───────────────────────────────────────────
 
@@ -142,6 +167,22 @@ enum DS {
         /// Kept distinct from the accent since it serves a different purpose
         /// (screen overlay vs in-app UI).
         static let overlayCursorBlue = Color(hex: "#3380FF")
+
+        /// Resolves a user-selected floating cursor color name ("red", "blue", "yellow", "green").
+        static func cursorColor(named name: String) -> Color {
+            switch name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "red":
+                return Color(hex: "#FF4C4C")
+            case "yellow":
+                return Color(hex: "#D4A017")
+            case "green":
+                return Color(hex: "#26C281")
+            case "blue":
+                return Color(hex: "#3380FF")
+            default:
+                return Color(hex: "#3380FF")
+            }
+        }
 
         // ── Floating Button Gradient ─────────────────────────────────
 
@@ -155,9 +196,9 @@ enum DS {
         // ── Help Chat ──────────────────────────────────────────────
 
         /// User message bubble background in the help chat.
-        /// Blue 800 — deep blue that's clearly distinct from the dark surface
-        /// while keeping white text highly readable (~9:1 contrast).
-        static let helpChatUserBubble = blue800
+        /// Blue 800 on dark surfaces, Blue 600 on light surfaces for crisp readability
+        /// with white text.
+        static let helpChatUserBubble = adaptive(darkHex: "#1e40af", lightHex: "#2563eb")
 
         /// Slightly lighter variant for hover/pressed states on user bubbles.
         static let helpChatUserBubbleHover = blue700
@@ -745,6 +786,87 @@ extension View {
             }
         }
     }
+
+    /// Alias for `pointerCursor(isEnabled:)` so Wave 2 callers using `.pointerOnHover()` work seamlessly.
+    func pointerOnHover(isEnabled: Bool = true) -> some View {
+        pointerCursor(isEnabled: isEnabled)
+    }
+}
+
+// MARK: - Panel Style Preference & Frosted Background
+
+@MainActor
+final class ClickyPanelStylePreference: ObservableObject {
+    static let shared = ClickyPanelStylePreference()
+    private static let userDefaultsKey = "ClickyTransparentPanesEnabled"
+
+    @Published var usesTransparentPanes: Bool {
+        didSet {
+            guard usesTransparentPanes != oldValue else { return }
+            defaults.set(usesTransparentPanes, forKey: Self.userDefaultsKey)
+        }
+    }
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        if defaults.object(forKey: Self.userDefaultsKey) == nil {
+            self.usesTransparentPanes = true
+        } else {
+            self.usesTransparentPanes = defaults.bool(forKey: Self.userDefaultsKey)
+        }
+    }
+}
+
+private struct FrostedVisualEffectRepresentable: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .hudWindow
+    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
+    var state: NSVisualEffectView.State = .active
+    var cornerRadius: CGFloat
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let visualEffectView = NSVisualEffectView()
+        visualEffectView.material = material
+        visualEffectView.blendingMode = blendingMode
+        visualEffectView.state = state
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.cornerRadius = cornerRadius
+        visualEffectView.layer?.masksToBounds = true
+        return visualEffectView
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = state
+        nsView.wantsLayer = true
+        nsView.layer?.cornerRadius = cornerRadius
+        nsView.layer?.masksToBounds = true
+    }
+}
+
+struct ClickyPanelBackground: View {
+    let cornerRadius: CGFloat
+    let usesTranslucentMaterial: Bool
+
+    @ObservedObject private var stylePreference = ClickyPanelStylePreference.shared
+
+    init(cornerRadius: CGFloat = 14, usesTranslucentMaterial: Bool = true) {
+        self.cornerRadius = cornerRadius
+        self.usesTranslucentMaterial = usesTranslucentMaterial
+    }
+
+    var body: some View {
+        Group {
+            if usesTranslucentMaterial && stylePreference.usesTransparentPanes {
+                FrostedVisualEffectRepresentable(cornerRadius: cornerRadius)
+            } else {
+                DS.Colors.surface1
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
 }
 
 // MARK: - Buddy Composer Visual Style
@@ -772,7 +894,7 @@ private class PointerCursorNSView: NSView {
     }
 }
 
-private struct PointerCursorView: NSViewRepresentable {
+struct PointerCursorView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         return PointerCursorNSView()
     }

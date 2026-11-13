@@ -1,0 +1,1214 @@
+=== AgentHarness/AgentHarnessModels.swift (387 lines) ===
+  L8: public nonisolated struct AgentPlanStep: Sendable, Equatable, Codable {
+  L9:     public let step: String
+  L10:     public let status: String
+  L12:     public init(step: String, status: String) {
+  L18: public nonisolated struct AgentMCPServerStatus: Sendable, Equatable, Codable {
+  L19:     public let server: String
+  L20:     public let ok: Bool
+  L21:     public let tools: Int
+  L22:     public let error: String?
+  L24:     public init(server: String, ok: Bool, tools: Int, error: String? = nil) {
+  L32: public nonisolated struct AgentTurnStats: Sendable, Equatable, Codable {
+  L33:     public let rounds: Int
+  L34:     public let modelMs: Int
+  L35:     public let inputTokens: Int
+  L36:     public let cachedTokens: Int
+  L37:     public let outputTokens: Int
+  L38:     public let reasoningTokens: Int
+  L39:     public let toolCalls: Int
+  L40:     public let toolErrors: Int
+  L41:     public let earlyStarts: Int
+  L42:     public let compactions: Int
+  L44:     public init(
+  L69: public nonisolated struct AgentParsedCompletion: Sendable, Equatable {
+  L70:     public let rawText: String
+  L71:     public let summary: String?
+  L72:     public let answer: String?
+  L73:     public let artifacts: [String]
+  L74:     public let artifactsRaw: String?
+  L75:     public let doneTitle: String?
+  L76:     public let nextActions: [String]
+  L77:     public let nextActionsRaw: String?
+  L78:     public let routine: String?
+  L79:     public let computerUseRequest: String?
+  L80:     public let waitFor: String?
+  L81:     public let learned: String?
+  L82:     public let displayBody: String
+  L84:     public init(
+  L115: public nonisolated enum AgentCompletionXMLParser {
+  L230: public nonisolated struct AgentHarnessEvent: Sendable, Equatable {
+  L231:     public nonisolated enum Payload: Sendable, Equatable {
+  L248:     public let seq: Int
+  L249:     public let timestamp: Date
+  L250:     public let turnRef: String?
+  L251:     public let payload: Payload
+  L253:     public init(seq: Int, timestamp: Date, turnRef: String?, payload: Payload) {
+  L360: public nonisolated enum AgentHarnessRuntimeError: LocalizedError, Sendable {
+  L369:     public var errorDescription: String? {
+=== AgentHarness/AgentHarnessRunnerRuntime.swift (767 lines) ===
+  L25: public final class AgentHarnessRunnerRuntime: ObservableObject {
+  L26:     public static let shared = AgentHarnessRunnerRuntime()
+  L28:     @Published public private(set) var isRunning: Bool = false
+  L29:     @Published public private(set) var runnerPort: UInt16?
+  L30:     @Published public private(set) var activeJobIDs: Set<String> = []
+  L31:     @Published public private(set) var lastError: String?
+  L42:     public func startTurn(
+  L188:     public func steer(jobID: String, text: String) async throws {
+  L202:     public func cancel(jobID: String) async throws {
+  L215:     public func stopRunner() {
+  L506:     func startAndWaitForReadiness() async throws -> RunnerSessionInfo {
+  L587:     func stop() {
+  L694:     func postJSON(
+  L726:     func getEvents(
+=== AgentHarness/ClickyLocalAgentShim.swift (1003 lines) ===
+  L28:     func headerValue(named name: String) -> String? {
+  L33: public nonisolated enum ClickyLocalAgentShimError: LocalizedError, Sendable {
+  L37:     public var errorDescription: String? {
+  L48: public final class ClickyLocalAgentShim: ObservableObject {
+  L49:     public static let shared = ClickyLocalAgentShim()
+  L51:     @Published public private(set) var port: UInt16?
+  L52:     public var sessionToken: String
+  L62:     public func ensureStarted() async throws -> URL {
+  L105:     public func stop() {
+  L163:     func start() async throws -> UInt16 {
+  L194:     func stop() {
+  L918:     func urlSession(
+  L951:     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+  L962:     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+=== AntigravityOAuthManager.swift (805 lines) ===
+  L13: nonisolated public enum AntigravityOAuthError: LocalizedError, Sendable {
+  L23:     public var errorDescription: String? {
+  L58:     func startAndWaitForCallback(
+  L113:     func cancel() {
+  L284: public final class AntigravityOAuthManager: ObservableObject {
+  L285:     public static let shared = AntigravityOAuthManager()
+  L311:     @Published public var isAuthenticated: Bool = false
+  L312:     @Published public var isAuthenticating: Bool = false
+  L313:     @Published public var authError: String?
+  L314:     @Published public var userEmail: String?
+  L315:     @Published public var currentProjectNumber: String?
+  L340:     public var currentAccessToken: String? {
+  L365:     public func signIn() async throws {
+  L449:     public func refreshAccessTokenIfNeeded() async throws -> String {
+  L545:     public func signOut() {
+=== Audio/ClickyAudioTopologyMonitor.swift (415 lines) ===
+  L16: public struct ClickyAudioTopologySnapshot: Equatable, Sendable {
+  L17:     public let defaultOutputDeviceID: AudioObjectID
+  L18:     public let defaultInputDeviceID: AudioObjectID
+  L19:     public let defaultOutputDeviceName: String
+  L20:     public let inputDeviceName: String
+  L21:     public let outputIsBluetooth: Bool
+  L22:     public let outputIsHeadphones: Bool
+  L23:     public let outputTransportType: UInt32
+  L24:     public let outputDataSourceName: String?
+  L25:     public let updatedAt: Date
+  L27:     public var requiredPreRollSilenceDuration: TimeInterval {
+  L45: public final class ClickyAudioTopologyMonitor: ObservableObject {
+  L46:     public static let shared = ClickyAudioTopologyMonitor()
+  L48:     @Published public private(set) var snapshot: ClickyAudioTopologySnapshot
+  L50:     public let topologyChangedPublisher = PassthroughSubject<ClickyAudioTopologySnapshot, Never>()
+  L73:     public func start() {
+  L79:     public func refreshNow() {
+  L85:     nonisolated public func stop() {
+=== Audio/RealtimeVoiceClient.swift (654 lines) ===
+  L11: public enum RealtimeVoiceProvider: String, CaseIterable, Sendable {
+  L15:     public var displayName: String {
+  L23: public struct RealtimeVoiceSessionConfiguration: Sendable {
+  L24:     public let provider: RealtimeVoiceProvider
+  L25:     public let apiKey: String
+  L26:     public let voiceID: String
+  L27:     public let languageCode: String
+  L28:     public let instructions: String
+  L29:     public let speechSpeed: Double
+  L31:     public init(
+  L48: public enum RealtimeVoiceClientEvent: Sendable {
+  L63: public enum RealtimeVoiceClientError: LocalizedError {
+  L69:     public var errorDescription: String? {
+  L83: public nonisolated final class RealtimeVoiceClient: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
+  L98:     public var inputSampleRate: Double {
+  L109:     public func connect(
+  L144:     public func sendInputAudioPCM16(_ pcmData: Data, sampleRate: Int) {
+  L175:     public func commitInputAudioAndRequestResponse() {
+  L195:     public func sendTextTurn(_ text: String) {
+  L238:     public func interruptResponse() {
+  L250:     public func disconnect() {
+  L264:     public func urlSession(
+  L278:     public func urlSession(
+  L298:     public func urlSession(
+=== Audio/RealtimeVoiceController.swift (1182 lines) ===
+  L21: public enum RealtimeVoiceState: Equatable, Sendable {
+  L29:     public var isActive: Bool {
+  L39: public enum VoicePipelineRoute: Equatable, Sendable {
+  L45: public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+  L46:     public static let shared = RealtimeVoiceController()
+  L53:     @Published public private(set) var state: RealtimeVoiceState = .idle
+  L54:     @Published public private(set) var activeRoute: VoicePipelineRoute = .turnBased
+  L55:     @Published public private(set) var activeProviderLabel: String = ""
+  L56:     @Published public private(set) var lastUserTranscript: String = ""
+  L57:     @Published public private(set) var lastAssistantTranscript: String = ""
+  L58:     @Published public private(set) var currentAudioPowerLevel: CGFloat = 0
+  L59:     @Published public private(set) var isGeminiInCooldown: Bool = false
+  L60:     @Published public private(set) var lastErrorMessage: String?
+  L62:     @Published public var speechSpeed: Double {
+  L75:     public var turnBasedHandler: ((_ userText: String) async throws -> String)?
+  L137:     public func startSession() async {
+  L156:     public func stopSession() {
+  L172:     public func sendTextTurn(_ text: String) async {
+  L208:     public func interruptAssistantSpeech() {
+  L222:     public func resolvePreferredRoute() -> VoicePipelineRoute {
+  L523:     public func speakTurnBasedResponse(_ text: String) async {
+  L755:     nonisolated public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+=== Audio/VoiceLanguageCatalog.swift (367 lines) ===
+  L13: public enum VoiceCatalogProvider: String, Codable, CaseIterable, Sendable {
+  L18: public struct CatalogVoice: Identifiable, Hashable, Sendable {
+  L19:     public let id: String
+  L20:     public let displayName: String
+  L21:     public let provider: VoiceCatalogProvider
+  L22:     public let toneDescription: String
+  L23:     public let previewFilename: String
+  L25:     public init(
+  L40: public struct SpeechSpeedOption: Identifiable, Hashable, Sendable {
+  L41:     public var id: Double { rate }
+  L42:     public let rate: Double
+  L43:     public let label: String
+  L45:     public init(rate: Double, label: String) {
+  L51: public struct VoiceLanguage: Identifiable, Hashable, Sendable {
+  L52:     public var id: String { code }
+  L53:     public let code: String
+  L54:     public let name: String
+  L55:     public let nativeName: String
+  L56:     public let bcp47Locale: String
+  L58:     public init(
+  L70:     public var displayLabel: String {
+  L78: public enum VoiceLanguageCatalog {
+  L306: public final class VoicePreviewPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
+  L307:     public static let shared = VoicePreviewPlayer()
+  L309:     @Published public private(set) var currentlyPlayingVoiceID: String?
+  L310:     @Published public private(set) var isPlaying = false
+  L318:     public func playPreview(for voiceID: String) {
+  L350:     public func stopPreview() {
+  L357:     nonisolated public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+=== Browser/ClickyBrowserBridge.swift (731 lines) ===
+  L16: nonisolated public struct ClickyBrowserNativeHostSetupError: Error, Sendable, Equatable {
+  L17:     public let browserName: String
+  L18:     public let folderPath: String
+  L19:     public let underlyingDescription: String
+  L21:     public init(browserName: String, folderPath: String, underlying: Error) {
+  L28: nonisolated public enum ClickyBrowserBridgeError: LocalizedError, Sendable {
+  L35:     public var errorDescription: String? {
+  L51: nonisolated public struct ClickyBrowserSession: Identifiable, Equatable, Sendable {
+  L52:     public let id: String
+  L53:     public let session: String
+  L54:     public let profile: String
+  L55:     public let browser: String
+  L56:     public let extensionVersion: String
+  L57:     public let tabId: Int?
+  L58:     public let selected: Bool
+  L59:     public let lastSeen: Date
+  L61:     public init(
+  L81: nonisolated public struct ClickyChromiumBrowserDescriptor: Identifiable, Equatable, Sendable {
+  L82:     public let id: String
+  L83:     public let displayName: String
+  L84:     public let bundleIdentifiers: [String]
+  L85:     public let applicationSupportSubpath: String
+  L86:     public let extensionsPageURL: String
+  L87:     public let isPrimaryTarget: Bool
+  L89:     public func nativeMessagingHostsDirectory(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+  L96:     public func manifestURL(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+  L101:     public func userDataDirectory(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+  L111: public final class ClickyBrowserBridge: ObservableObject {
+  L112:     public static let shared = ClickyBrowserBridge()
+  L200:     @Published public private(set) var isConnected: Bool = false
+  L201:     @Published public private(set) var connectedBrowsers: [String] = []
+  L202:     @Published public private(set) var activeSessions: [ClickyBrowserSession] = []
+  L203:     @Published public private(set) var profiles: [String] = []
+  L204:     @Published public var selectedProfile: String? {
+  L209:     @Published public private(set) var statusMessage: String = "Not connected"
+  L210:     @Published public private(set) var hasEverConnected: Bool
+  L211:     @Published public private(set) var lastBrowserName: String?
+  L212:     @Published public private(set) var nativeHostSetupErrors: [ClickyBrowserNativeHostSetupError] = []
+  L213:     @Published public private(set) var isBundledHelperPresent: Bool = false
+  L215:     public var onExtensionConnected: ((ClickyBrowserSession) -> Void)?
+  L216:     public var onConnectionChanged: ((Bool) -> Void)?
+  L227:         func toHostPayload(session: ClickyBrowserSession) -> [String: Any] {
+  L275:     public func start() {
+  L285:     public func stop() {
+  L307:     public var bundledHelperPath: String {
+  L311:     public func resolvedExtensionIDs() -> [String] {
+  L333:     public func installNativeMessagingHosts() {
+  L388:     public func verifyNativeMessagingHosts() -> [String: Bool] {
+  L411:     public func installedChromiumBrowsers() -> [ClickyChromiumBrowserDescriptor] {
+  L418:     public func isBrowserInstalled(_ browser: ClickyChromiumBrowserDescriptor) -> Bool {
+  L429:     public func dispatchBrowserCommand(
+  L436:     public func dispatchBrowserCommand(
+  L497:     public func handleBrowserPoll(arguments: [String: Any]) async -> [String: Any] {
+  L578:     public func handleBrowserReply(arguments: [String: Any]) -> [String: Any] {
+=== Browser/ClickyChromeSetupFlow.swift (315 lines) ===
+  L18: public final class ClickyChromeSetupFlow: ObservableObject {
+  L19:     public static let shared = ClickyChromeSetupFlow()
+  L28:     public enum Choice: String, Sendable {
+  L34:     public enum SetupState: Equatable, Sendable {
+  L43:     @Published public private(set) var setupState: SetupState = .noChromiumBrowser
+  L44:     @Published public private(set) var isShowingHow: Bool = false
+  L45:     @Published public private(set) var isSettingUpForThem: Bool = false
+  L46:     @Published public private(set) var hasOldCopyToRemove: Bool = false
+  L47:     @Published public private(set) var installedBrowsers: [ClickyChromiumBrowserDescriptor] = []
+  L48:     @Published public var preferredBrowserName: String = "Google Chrome"
+  L49:     @Published public private(set) var didRequestBrowserSettings: Bool = false
+  L50:     @Published public private(set) var lastDeepLinkURL: URL?
+  L65:     public func handleDeepLink(_ url: URL) -> Bool {
+  L93:     public func clearPendingBrowserSettingsRequest() {
+  L99:     public func refreshSetupState() {
+  L146:     public func choose(_ choice: Choice) {
+  L164:     public func openChromeWebStore(in browser: ClickyChromiumBrowserDescriptor? = nil) {
+  L184:     public func openExtensionsPageForSwap(in browser: ClickyChromiumBrowserDescriptor? = nil) {
+  L198:     public func openNoChromiumBrowserGuide() {
+  L209:     public func removeOldPreviewExtensionFolderIfPresent() -> Bool {
+  L226:     public func detectOldUnpackedExtensionCopy() -> Bool {
+  L262:     public func swapOrInstallInstructions(for browserName: String? = nil) -> String {
+=== Browser/ClickyLoopbackMCPServer.swift (947 lines) ===
+  L17: nonisolated public struct ClickyMCPToolDefinition: @unchecked Sendable {
+  L18:     public let name: String
+  L19:     public let description: String
+  L20:     public let inputSchema: [String: Any]
+  L22:     public init(name: String, description: String, inputSchema: [String: Any]) {
+  L28:     public func toDictionary() -> [String: Any] {
+  L37: nonisolated public struct ClickyMCPToolResult: @unchecked Sendable {
+  L38:     public let content: [[String: Any]]
+  L39:     public let structuredContent: [String: Any]
+  L40:     public let isError: Bool
+  L42:     public init(
+  L84: nonisolated public enum ClickyLoopbackServerError: LocalizedError {
+  L89:     public var errorDescription: String? {
+  L105:     func tryFire() -> Bool {
+  L162:     func start() throws -> UInt16 {
+  L233:     func stop() {
+  L454: public final class ClickyLoopbackMCPServer {
+  L455:     public static let shared = ClickyLoopbackMCPServer()
+  L465:     public let bearerToken: String
+  L471:     public var isRunning: Bool {
+  L475:     public var endpointURL: URL? {
+  L480:     public var connectionFileURL: URL {
+  L491:     public func start() throws {
+  L515:     public func stop() {
+  L524:     public func registerTool(
+  L538:     public func unregisterTool(name: String) {
+  L542:     public func registeredToolDefinitions() -> [ClickyMCPToolDefinition] {
+=== Browser/ClickyUploadApproval.swift (479 lines) ===
+  L17: nonisolated public enum UploadApprovalDecision: String, Sendable, Equatable {
+  L23:     public var isApproved: Bool {
+  L33: nonisolated public struct UploadApprovalRequest: Identifiable, Equatable, Sendable {
+  L34:     public let id: UUID
+  L35:     public let jobTitle: String
+  L36:     public let files: [String]
+  L37:     public let site: String
+  L38:     public let requestedAt: Date
+  L40:     public init(
+  L55: nonisolated public enum UploadPathValidationResult: Equatable, Sendable {
+  L65: public final class ClickyUploadApproval: ObservableObject {
+  L66:     public static let shared = ClickyUploadApproval()
+  L73:     @Published public private(set) var pendingRequest: UploadApprovalRequest?
+  L74:     @Published public private(set) var isAsking: Bool = false
+  L76:     public var activeTurnID: String = "default-turn"
+  L77:     public var activeWorkspaceURL: URL?
+  L79:     public var onApprovalRequested: ((UploadApprovalRequest) -> Void)?
+  L89:     public func beginTurn(turnID: String, workspaceURL: URL?) {
+  L94:     public func endTurn(turnID: String? = nil) {
+  L102:     public func clearTurnCache() {
+  L109:     nonisolated public func validatePath(
+  L163:     nonisolated public func validateUploadPaths(
+  L315:     public func requestApproval(
+  L412:     public func resolvePending(_ decision: UploadApprovalDecision) {
+  L425:     public func handleMCPToolCall(_ arguments: [String: Any]) async -> ClickyMCPToolResult {
+=== BuddyDictationManager.swift (1357 lines) ===
+  L304:     @Published private(set) var isRecordingFromMicrophoneButton = false
+  L305:     @Published private(set) var isRecordingFromKeyboardShortcut = false
+  L306:     @Published private(set) var isKeyboardShortcutSessionActiveOrFinalizing = false
+  L307:     @Published private(set) var isSystemWideDictationActive = false
+  L308:     @Published private(set) var isHandsFreeDictationActive = false
+  L309:     @Published private(set) var isFinalizingTranscript = false
+  L310:     @Published private(set) var isPreparingToRecord = false
+  L311:     @Published private(set) var currentAudioPowerLevel: CGFloat = 0
+  L312:     @Published private(set) var recordedAudioPowerHistory = Array(
+  L316:     @Published private(set) var microphoneButtonRecordingStartedAt: Date?
+  L317:     @Published private(set) var transcriptionProviderDisplayName = ""
+  L318:     @Published var lastErrorMessage: String?
+  L319:     @Published private(set) var lastSalvagedTranscript: String?
+  L320:     @Published private(set) var currentPermissionProblem: BuddyDictationPermissionProblem?
+  L322:     @Published var isTranscriptCleanupEnabled: Bool {
+  L404:     func updateContextualKeyterms(_ contextualKeyterms: [String]) {
+  L410:     func attachShortcutMonitor(_ monitor: GlobalPushToTalkShortcutMonitor) {
+  L434:     func startPersistentDictationFromMicrophoneButton(
+  L448:     func startPushToTalkFromKeyboardShortcut(
+  L464:     func startSystemWideDictation(handsFree: Bool = false) async {
+  L477:     func stopSystemWideDictation() {
+  L485:     func toggleHandsFreeSystemWideDictation() async {
+  L493:     func stopPersistentDictationFromMicrophoneButton() {
+  L497:     func stopPushToTalkFromKeyboardShortcut() {
+  L501:     func cancelCurrentDictation(preserveDraftText: Bool = true) {
+  L521:     func requestInitialPushToTalkPermissionsIfNeeded() async {
+  L906:     func insertTextAtCurrentSystemCursor(_ text: String) async -> Bool {
+  L1325:     func openRelevantPrivacySettings() {
+=== ClickyAnalytics.swift (472 lines) ===
+  L16: public struct RecentAppError: Identifiable, Codable, Sendable {
+  L17:     public let id: UUID
+  L18:     public let timestamp: Date
+  L19:     public let domain: String
+  L20:     public let message: String
+  L21:     public let traceID: String?
+  L22:     public let metadata: [String: String]
+  L24:     public init(
+  L41: public final class ClickyRecentErrorBuffer: @unchecked Sendable {
+  L42:     public nonisolated static let shared = ClickyRecentErrorBuffer()
+  L50:     public nonisolated func record(
+  L70:     public nonisolated func snapshot() -> [RecentAppError] {
+  L76:     public nonisolated func clear() {
+  L82:     public nonisolated func formattedReport() -> String {
+  L96: public final class ClickyAITracing: @unchecked Sendable {
+  L97:     public nonisolated static let shared = ClickyAITracing()
+  L108:     public nonisolated var currentSessionID: String {
+  L114:     public nonisolated var currentTraceID: String? {
+  L120:     public nonisolated var traceIDs: [String] {
+  L127:     public nonisolated func startNewSession() -> String {
+  L137:     public nonisolated func beginTrace(prefix: String = "clk") -> String {
+  L149:     public nonisolated func endTrace(_ traceID: String) {
+  L157:     public nonisolated func traceHeaders(traceID: String? = nil) -> [String: String] {
+  L168:     public nonisolated func applyTraceHeaders(to request: inout URLRequest, traceID: String? = nil) {
+=== ClickyConnectionMode.swift (250 lines) ===
+  L10: nonisolated public enum ClickyConnectionMode: String, CaseIterable, Identifiable, Sendable {
+  L16:     public var id: String { rawValue }
+  L18:     public var displayName: String {
+  L29: nonisolated public enum ClickyVoicePipelineMode: String, CaseIterable, Identifiable, Sendable {
+  L34:     public var id: String { rawValue }
+  L36:     public var displayName: String {
+  L47: public final class ClickyConfiguration: ObservableObject {
+  L48:     public static let shared = ClickyConfiguration()
+  L83:     @Published public var mode: ClickyConnectionMode {
+  L92:     @Published public var openCodexBaseURL: String {
+  L101:     @Published public var openCodexAPIKey: String {
+  L105:     @Published public var selectedModel: String {
+  L109:     @Published public var selectedAgentModel: String {
+  L113:     @Published public var workerBaseURL: String {
+  L117:     @Published public var soundEffectsEnabled: Bool {
+  L122:     @Published public var anthropicAPIKey: String {
+  L126:     @Published public var openaiAPIKey: String {
+  L130:     @Published public var geminiAPIKey: String {
+  L134:     @Published public var braveAPIKey: String {
+  L138:     @Published public var elevenLabsAPIKey: String {
+  L142:     @Published public var assemblyAIAPIKey: String {
+  L146:     @Published public var antigravityClientID: String {
+  L150:     @Published public var antigravityClientSecret: String {
+  L154:     @Published public var elevenLabsVoiceID: String {
+  L158:     @Published public var voicePipelineMode: ClickyVoicePipelineMode {
+  L162:     @Published public var selectedVoiceID: String {
+  L166:     @Published public var selectedVoiceLanguage: String {
+  L170:     @Published public var dictationLanguageCode: String {
+  L174:     @Published public var dictationAutoDetect: Bool {
+  L178:     @Published public var hideFloatingCursor: Bool {
+  L182:     @Published public var cursorColorName: String {
+  L186:     @Published public var alwaysApproveFileUploads: Bool {
+  L192:     public var isLocalModeWithoutPaywall: Bool {
+=== ClickySoundEffectPlayer.swift (253 lines) ===
+  L14: public enum ClickySoundEffect: String, CaseIterable, Sendable {
+  L59:     func play(
+  L75:     func preload(_ filenames: [String]) {
+  L84:     func stopAll() {
+  L220: public final class ClickySoundEffectPlayer {
+  L221:     public static let shared = ClickySoundEffectPlayer()
+  L227:     public func play(_ sound: ClickySoundEffect, volume: Float = 1.0) {
+  L241:     public func preloadCommonEffects() {
+  L250:     public func stopAll() {
+=== Clickys/ClickyAppStore.swift (205 lines) ===
+  L9: public nonisolated struct ClickyAppWorkEntry: Identifiable, Codable, Equatable, Sendable {
+  L10:     public let id: String
+  L11:     public let clickySlug: String
+  L12:     public var threadID: String?
+  L13:     public var title: String
+  L14:     public var ask: String
+  L15:     public var summary: String
+  L16:     public var reply: String
+  L17:     public var artifactPaths: [String]
+  L18:     public var folderPath: String?
+  L19:     public let createdAt: Date
+  L20:     public var finishedAt: Date?
+  L21:     public var failed: Bool
+  L22:     public var isRoutineRun: Bool
+  L24:     public init(
+  L68: public final class ClickyAppStore: ObservableObject {
+  L69:     public static let shared = ClickyAppStore()
+  L71:     @Published private(set) var worksBySlug: [String: [ClickyAppWorkEntry]] = [:]
+  L77:     public var worksFileURL: URL {
+  L81:     public init(
+  L96:     public func loadAll() {
+  L128:     public func works(forSlug slug: String) -> [ClickyAppWorkEntry] {
+  L132:     public func latestWork(forSlug slug: String) -> ClickyAppWorkEntry? {
+  L136:     public var allWorksNewestFirst: [ClickyAppWorkEntry] {
+  L146:     public func recordWork(_ entry: ClickyAppWorkEntry) {
+  L160:     public func updateWork(
+  L180:     public func removeWorks(forSlug slug: String) {
+=== Clickys/ClickyJobStore.swift (728 lines) ===
+  L9: public nonisolated enum ClickyJobOutcome: String, Codable, Equatable, Sendable {
+  L16: public nonisolated enum ClickyJobRailPhase: String, Codable, Equatable, Sendable {
+  L25: public nonisolated struct ClickyJobArtifactEntry: Codable, Equatable, Identifiable, Sendable {
+  L26:     public var id: String { path }
+  L28:     public let path: String
+  L29:     public var title: String
+  L30:     public var isLink: Bool
+  L31:     public var byteCount: Int64?
+  L32:     public var modifiedAt: Date?
+  L34:     public init(
+  L53: public nonisolated struct ClickyJobUserStep: Codable, Equatable, Sendable {
+  L54:     public var step: String
+  L55:     public var page: String?
+  L56:     public var doneWhenURLContains: String?
+  L57:     public var askedAt: Date
+  L66:     public init(
+  L79: public nonisolated struct ClickyJobRun: Codable, Equatable, Identifiable, Sendable {
+  L80:     public var id: String { "\(threadID)-\(startedAt.timeIntervalSince1970)" }
+  L82:     public let threadID: String
+  L83:     public let startedAt: Date
+  L84:     public var ask: String
+  L85:     public var finishedAt: Date?
+  L86:     public var outcome: ClickyJobOutcome
+  L87:     public var summary: String?
+  L98:     public init(
+  L115: public nonisolated struct ClickyJob: Identifiable, Codable, Equatable, Sendable {
+  L116:     public let id: String
+  L117:     public var clickySlug: String
+  L118:     public var title: String
+  L119:     public var prompt: String
+  L120:     public var threadID: String
+  L121:     public var folderPath: String
+  L122:     public let createdAt: Date
+  L123:     public var finishedAt: Date?
+  L124:     public var outcome: ClickyJobOutcome
+  L125:     public var summary: String?
+  L126:     public var replyText: String?
+  L127:     public var artifactEntries: [ClickyJobArtifactEntry]
+  L128:     public var latestReplyArtifactEntries: [ClickyJobArtifactEntry]
+  L129:     public var isSeen: Bool
+  L130:     public var isDismissed: Bool
+  L131:     public var followedUpOnLaterDay: Bool
+  L132:     public var isArchived: Bool
+  L133:     public var cloudColorName: String?
+  L134:     public var suggestionCardID: String?
+  L135:     public var nickname: String?
+  L136:     public var waitsForChrome: Bool
+  L137:     public var skipsChrome: Bool
+  L138:     public var runs: [ClickyJobRun]
+  L139:     public var waitingStep: ClickyJobUserStep?
+  L168:     public init(
+  L220:     public init(from decoder: Decoder) throws {
+  L248:     public var railPhase: ClickyJobRailPhase {
+  L265: public nonisolated struct ClickyRestartInterruptionRecord: Codable, Equatable, Sendable {
+  L266:     public let slug: String
+  L267:     public let jobID: String
+  L268:     public let threadID: String
+  L269:     public let interruptedAt: Date
+  L270:     public var isInChat: Bool
+  L272:     public init(
+  L288: public final class ClickyJobStore: ObservableObject {
+  L289:     public static let shared = ClickyJobStore()
+  L296:     @Published private(set) var jobs: [ClickyJob] = []
+  L297:     @Published public var jobIDsWithRoutines: Set<String> = []
+  L298:     @Published private(set) var interruptedTurnsBySlug: [String: ClickyRestartInterruptionRecord] = [:]
+  L300:     public var activeJobs: [ClickyJob] {
+  L306:     public var visibleJobs: [ClickyJob] {
+  L312:     public var unreadCount: Int {
+  L318:     public init(defaults: UserDefaults = .standard) {
+  L325:     public func createJob(
+  L382:     public func updateJob(id: String, mutate: (inout ClickyJob) -> Void) {
+  L394:     public func updateJob(_ job: ClickyJob) {
+  L407:     public func appendReply(
+  L454:     public func beginNewRun(jobID: String, threadID: String, ask: String) {
+  L476:     public func finishLatestRun(jobID: String, outcome: ClickyJobOutcome, summary: String?) {
+  L492:     public func markSeen(jobID: String) {
+  L498:     public func dismissJob(jobID: String) {
+  L505:     public func archiveJob(jobID: String) {
+  L512:     public func setWaitingStep(jobID: String, step: ClickyJobUserStep?) {
+  L518:     public func job(withID id: String) -> ClickyJob? {
+  L522:     public func job(forThreadID threadID: String) -> ClickyJob? {
+  L526:     public func jobs(forClickySlug slug: String) -> [ClickyJob] {
+  L530:     public func findJobs(matchingQuery query: String, limit: Int = 20) -> [ClickyJob] {
+  L550:     public func markInterruptedWorkingJobsOnLaunch() {
+  L640: public final class ClickyJobStepWatcher {
+  L641:     public static let shared = ClickyJobStepWatcher()
+  L643:     public var onStepDone: ((ClickyJob, String) -> Void)?
+  L644:     public var activeURLProvider: (@MainActor () async -> String?)?
+  L653:     public init(jobStore: ClickyJobStore = .shared) {
+  L657:     public func start(pollIntervalSeconds: TimeInterval = 2.0) {
+  L666:     public func stop() {
+  L671:     public func resetTracking(forJobID jobID: String) {
+  L676:     public func evaluateWaitingJobs() async {
+=== Clickys/ClickyRoster.swift (629 lines) ===
+  L9: public nonisolated enum ClickyAgentProp: String, Codable, CaseIterable, Sendable, Identifiable {
+  L39:     public var id: String { rawValue }
+  L41:     public var systemImageName: String {
+  L91: public nonisolated struct ClickyProfile: Identifiable, Codable, Equatable, Sendable {
+  L92:     public var id: String { slug }
+  L94:     public let slug: String
+  L95:     public var name: String
+  L96:     public var roleText: String
+  L97:     public var oneLiner: String
+  L98:     public var baseHue: Double
+  L99:     public var prop: ClickyAgentProp
+  L100:     public let createdAt: Date
+  L101:     public var introMessages: [String]
+  L102:     public var suggestedAsks: [String]
+  L103:     public var isArchived: Bool
+  L104:     public let isStarterDefault: Bool
+  L106:     public init(
+  L132:     public var greeting: String {
+  L143: public final class ClickyRoster: ObservableObject {
+  L144:     public nonisolated struct StoredRoster: Codable, Equatable, Sendable {
+  L145:         public nonisolated struct CreatedClicky: Codable, Equatable, Identifiable, Sendable {
+  L146:             public var id: String { slug }
+  L148:             public let slug: String
+  L149:             public var name: String
+  L150:             public var roleText: String
+  L151:             public var oneLiner: String
+  L152:             public var baseHue: Double
+  L153:             public var prop: ClickyAgentProp?
+  L154:             public let createdAt: Date
+  L155:             public var introMessages: [String]
+  L156:             public var suggestedAsks: [String]
+  L157:             public var firstAsksGeneratedAfterCreation: Bool
+  L172:             public init(
+  L196:             public init(from decoder: Decoder) throws {
+  L211:         public nonisolated struct IdentityOverride: Codable, Equatable, Sendable {
+  L212:             public var name: String?
+  L213:             public var roleText: String?
+  L214:             public var oneLiner: String?
+  L215:             public var prop: ClickyAgentProp?
+  L217:             public init(
+  L230:         public var overridesBySlug: [String: IdentityOverride]
+  L231:         public var createdClickys: [CreatedClicky]
+  L232:         public var archivedSlugs: [String]
+  L233:         public var portraitAppearancesBySlug: [String: String]
+  L234:         public var userCustomizedPortraitSlugs: [String]
+  L236:         public init(
+  L251:     public static let shared = ClickyRoster()
+  L304:     @Published public private(set) var clickys: [ClickyProfile] = []
+  L305:     @Published public private(set) var allClickys: [ClickyProfile] = []
+  L306:     @Published public var isStarterCastUnlocked: Bool {
+  L312:     @Published public private(set) var threadBindingsBySlug: [String: String] = [:]
+  L313:     @Published public private(set) var lastSeenAtBySlug: [String: Date] = [:]
+  L314:     @Published public private(set) var manuallyUnreadSlugs: Set<String> = []
+  L315:     @Published public private(set) var threadOwnershipVersion: Int = 0
+  L316:     @Published public private(set) var readStateVersion: Int = 0
+  L318:     public init(defaults: UserDefaults = .standard) {
+  L339:     public func createClicky(
+  L408:     public func archiveClicky(slug: String) {
+  L415:     public func unarchiveClicky(slug: String) {
+  L422:     public func activeClicky(forSlug slug: String) -> ClickyProfile? {
+  L426:     public func clicky(forSlug slug: String) -> ClickyProfile? {
+  L430:     public func updateIdentity(
+  L460:     public func bindThread(_ threadID: String, toSlug slug: String) {
+  L466:     public func unbindThread(forSlug slug: String) {
+  L472:     public func slug(forThreadID threadID: String) -> String? {
+  L476:     public func markRead(slug: String, at date: Date = Date()) {
+  L482:     public func markUnread(slug: String) {
+  L487:     public func isUnread(slug: String, latestActivityAt: Date? = nil) -> Bool {
+  L496:     public func resetAllLocalClickys() {
+=== Clickys/ClickyWorkFolderFiles.swift (363 lines) ===
+  L9: public final class ClickyWorkFolderFiles {
+  L10:     public static let shared = ClickyWorkFolderFiles()
+  L28:     public var rootDirectoryURL: URL {
+  L32:     public init(
+  L48:     public func workspaceURL(forSlug slug: String) -> URL {
+  L52:     public func agentsMarkdownURL(forSlug slug: String) -> URL {
+  L56:     public func noteMarkdownURL(forSlug slug: String) -> URL {
+  L60:     public func previousNoteMarkdownURL(forSlug slug: String) -> URL {
+  L66:     public func longWorkMemoryURL(forSlug slug: String) -> URL {
+  L72:     public func reportMarkdownURL(forSlug slug: String) -> URL {
+  L76:     public func outputDirectoryURL(forSlug slug: String) -> URL {
+  L80:     public func tmpDirectoryURL(forSlug slug: String) -> URL {
+  L84:     public func workIndexURL() -> URL {
+  L89:     public func ensureClickyWorkspace(profile: ClickyProfile) -> URL {
+  L102:     public func ensureClickyWorkspace(slug: String) -> URL {
+  L117:     public func readAgentsMarkdown(forSlug slug: String) -> String {
+  L122:     public func readLiveNote(forSlug slug: String) -> String {
+  L127:     public func writeLiveNote(_ content: String, forSlug slug: String) {
+  L135:     public func rotateNoteToPrevious(forSlug slug: String) -> Bool {
+  L159:     public func readLongWorkMemory(forSlug slug: String) -> String {
+  L164:     public func writeLongWorkMemory(_ content: String, forSlug slug: String) {
+  L172:     public func syncJobArtifactsAndReport(for job: ClickyJob) {
+  L192:     public func updateWorkIndex(jobs: [ClickyJob]? = nil) {
+  L204:     public func listOutputFiles(forSlug slug: String) -> [URL] {
+=== ComputerUse/ClickyAppDriver.swift (526 lines) ===
+  L16: nonisolated public enum ClickyAppDriverError: LocalizedError, Sendable {
+  L22:     public var errorDescription: String? {
+  L36: nonisolated public enum ClickyMouseButton: String, Sendable {
+  L42: nonisolated public enum ClickyMenuStep: Sendable {
+  L50: public final class ClickyAppDriver {
+  L56:     public var userTookOver: Bool = false
+  L61:     public init(shouldAbortCheck: @escaping @Sendable () -> Bool = { false }) {
+  L66:     public func resetTakeOverState() {
+  L70:     public func markUserTookOver() {
+  L74:     public func currentCursorPosition() -> CGPoint {
+  L85:     public func convertAppKitPointToCoreGraphics(_ appKitPoint: CGPoint) -> CGPoint {
+  L92:     public func convertCoreGraphicsPointToAppKit(_ cgPoint: CGPoint) -> CGPoint {
+  L100:     public func moveMouse(to targetPoint: CGPoint, smoothSteps: Int = 12) async throws {
+  L123:     public func click(
+  L163:     public func mouseDown(at point: CGPoint, button: ClickyMouseButton = .left) async throws {
+  L178:     public func mouseUp(at point: CGPoint, button: ClickyMouseButton = .left) async throws {
+  L192:     public func drag(from startPoint: CGPoint, to endPoint: CGPoint, steps: Int = 18) async throws {
+  L216:     public func scroll(at point: CGPoint? = nil, deltaY: Int32, deltaX: Int32 = 0) async throws {
+  L238:     public func typeText(_ text: String) async throws {
+  L268:     public func pressKey(_ keyName: String, modifiers: CGEventFlags = []) async throws {
+  L291:     public func pressKeyCombo(_ combo: String) async throws {
+  L324:     public func isAccessibilityTrusted() -> Bool {
+  L328:     public func frontmostApplication() -> NSRunningApplication? {
+  L332:     public func frontmostApplicationElement() -> AXUIElement? {
+  L339:     public func focusedWindow(of applicationElement: AXUIElement? = nil) -> AXUIElement? {
+  L346:     public func focusedUIElement() -> AXUIElement? {
+  L351:     public func elementAtScreenPoint(_ cgPoint: CGPoint) -> AXUIElement? {
+  L358:     public func elementRole(_ element: AXUIElement) -> String? {
+  L362:     public func elementTitle(_ element: AXUIElement) -> String? {
+  L367:     public func elementValue(_ element: AXUIElement) -> String? {
+  L371:     public func elementFrame(_ element: AXUIElement) -> CGRect? {
+  L395:     public func pressElement(_ element: AXUIElement) -> Bool {
+  L399:     public func findElement(
+  L429:     public func triggerMenuStep(_ step: ClickyMenuStep) async throws -> Bool {
+=== ComputerUse/ClickyTakeOverController.swift (567 lines) ===
+  L18: nonisolated public enum TakeOverPhase: String, Sendable, Equatable {
+  L24: nonisolated public enum TakeOverConsentDecision: String, Sendable, Equatable {
+  L29: nonisolated public struct TakeOverConsentRequest: Identifiable, Equatable, Sendable {
+  L30:     public let id: UUID
+  L31:     public let step: String
+  L32:     public let shortTitle: String
+  L33:     public let reason: String?
+  L34:     public let requestedAt: Date
+  L36:     public init(
+  L51: nonisolated public struct AgentDriveOutcome: Equatable, Sendable {
+  L52:     public enum Ending: String, Sendable, Equatable {
+  L61:     public let ending: Ending
+  L62:     public let summary: String
+  L63:     public let actions: Int
+  L65:     public init(ending: Ending, summary: String, actions: Int = 0) {
+  L72: nonisolated public enum ClickyTakeOverError: LocalizedError, Sendable {
+  L80:     public var errorDescription: String? {
+  L105:     func reset(initialMouseLocation: CGPoint?) {
+  L112:     func markTookOver() -> Bool {
+  L120:     func isTookOver() -> Bool {
+  L129:     func recordMouseMove(_ point: CGPoint) -> Bool {
+  L149: public final class ClickyTakeOverController: ObservableObject {
+  L150:     public static let shared = ClickyTakeOverController()
+  L154:     @Published public private(set) var phase: TakeOverPhase = .idle
+  L155:     @Published public var pendingConsent: TakeOverConsentRequest?
+  L156:     @Published public private(set) var userTookOver: Bool = false
+  L157:     @Published public private(set) var overlayStatus: String = ""
+  L158:     @Published public private(set) var endSummary: String?
+  L159:     @Published public private(set) var lastTakeOverEndedAt: Date?
+  L161:     public let driver: ClickyAppDriver
+  L163:     public var onConsentRequested: ((TakeOverConsentRequest) -> Void)?
+  L164:     public var onPhaseChanged: ((TakeOverPhase) -> Void)?
+  L165:     public var onUserTookOver: ((String) -> Void)?
+  L168:     public var stepExecutor: (@MainActor (_ request: TakeOverConsentRequest, _ driver: ClickyAppDriver) async throws -> AgentDriveOutcome)?
+  L190:     public func runMacStep(
+  L231:     public func requestConsent(for request: TakeOverConsentRequest) async -> TakeOverConsentDecision {
+  L260:     public func resolvePendingConsent(_ decision: TakeOverConsentDecision) {
+  L272:     public func executeDrive(for request: TakeOverConsentRequest) async throws -> AgentDriveOutcome {
+  L356:     public func updateOverlayStatus(_ status: String) {
+  L360:     public func abortForUserTakeOver(reason: String = "user_input") {
+  L376:     public func startUserInputMonitor() {
+  L426:     public func stopUserInputMonitor() {
+  L519:     public func handleMacStepToolCall(_ arguments: [String: Any]) async -> ClickyMCPToolResult {
+=== Documents/ActiveDocumentReader.swift (840 lines) ===
+  L13: public nonisolated enum ActiveDocumentReference: Equatable, Codable, Sendable {
+  L17:     public var rawLocation: String {
+  L26:     public var displayTitle: String {
+  L42: public nonisolated enum ActiveDocumentKind: String, Codable, Equatable, Sendable {
+  L52: public nonisolated struct ActiveDocumentContext: Equatable, Sendable {
+  L53:     public let kind: ActiveDocumentKind
+  L54:     public let reference: ActiveDocumentReference
+  L55:     public let extractedText: String
+  L56:     public let isTruncated: Bool
+  L57:     public let pageCount: Int?
+  L58:     public let fileAccessWasDenied: Bool
+  L59:     public let selectedText: String?
+  L60:     public let applicationName: String?
+  L61:     public let applicationBundleIdentifier: String?
+  L62:     public let applicationProcessIdentifier: pid_t?
+  L63:     public let windowTitle: String?
+  L65:     public init(
+  L91:     public func promptContextSummary() -> String {
+  L101: public nonisolated struct DocumentAccessNotice: Equatable, Identifiable, Sendable {
+  L102:     public var id: String { deniedFilePath }
+  L104:     public let title: String
+  L105:     public let subtitle: String
+  L106:     public let deniedFilePath: String
+  L107:     public let folderName: String
+  L108:     public let showsDontShowAgain: Bool
+  L109:     public let settingsURL: URL
+  L111:     public init(
+  L128: public nonisolated enum ActiveBrowserSiteReader {
+  L129:     public nonisolated struct SupportedBrowser: Sendable {
+  L130:         public let bundleIdentifiers: [String]
+  L131:         public let displayName: String
+  L132:         public let appleScriptKind: AppleScriptKind?
+  L134:         public nonisolated enum AppleScriptKind: Sendable {
+  L346: public final class ActiveDocumentReader: ObservableObject {
+  L347:     public nonisolated struct CollectedPageText: Equatable, Sendable {
+  L348:         public let text: String
+  L349:         public let isTruncated: Bool
+  L351:         public init(text: String, isTruncated: Bool) {
+  L357:     public static let shared = ActiveDocumentReader()
+  L365:     @Published private(set) var activeDocumentAccessNotice: DocumentAccessNotice?
+  L366:     @Published private(set) var lastCapturedContext: ActiveDocumentContext?
+  L370:     public init(defaults: UserDefaults = .standard) {
+  L374:     public func captureActiveContext(maxCharacters: Int = 80_000) async -> ActiveDocumentContext? {
+  L402:     public func openFilesAndFoldersPrivacySettings() {
+  L406:     public func dismissAccessNotice(dontShowAgain: Bool = false) {
+  L413:     public func resetAccessNoticeSuppression() {
+=== GlobalPushToTalkShortcutMonitor.swift (525 lines) ===
+  L15: public enum ClickyShortcutSlot: String, CaseIterable, Codable, Identifiable, Sendable {
+  L21:     public var id: String { rawValue }
+  L23:     public var displayName: String {
+  L33: public enum ClickyShortcutTriggerMode: String, CaseIterable, Codable, Sendable {
+  L37:     public var displayName: String {
+  L45: public enum ClickyShortcutModifierKey: String, CaseIterable, Codable, Sendable {
+  L52:     public var displayName: String {
+  L62:     public var eventModifierFlag: NSEvent.ModifierFlags {
+  L73: public struct ClickyShortcutBinding: Codable, Equatable, Sendable {
+  L74:     public var slot: ClickyShortcutSlot
+  L75:     public var triggerMode: ClickyShortcutTriggerMode
+  L76:     public var modifiers: [ClickyShortcutModifierKey]
+  L77:     public var keyCode: UInt16?
+  L78:     public var isEnabled: Bool
+  L80:     public init(
+  L94:     public var requiredModifierFlags: NSEvent.ModifierFlags {
+  L100:     public var keyCapsuleLabels: [String] {
+  L111:     public var displayText: String {
+  L162: public enum ClickyShortcutSlotEvent: Equatable, Sendable {
+  L191:     @Published private(set) var isShortcutCurrentlyPressed = false
+  L192:     @Published private(set) var activeHoldSlots: Set<ClickyShortcutSlot> = []
+  L193:     @Published private(set) var isHandsFreeDictationToggledOn = false
+  L194:     @Published public var bindings: [ClickyShortcutSlot: ClickyShortcutBinding]
+  L213:     func binding(for slot: ClickyShortcutSlot) -> ClickyShortcutBinding {
+  L217:     func updateBinding(_ binding: ClickyShortcutBinding) {
+  L227:     func resetBindingsToDefaults() {
+  L236:     func resetHandsFreeToggleState() {
+  L240:     func start() {
+  L296:     func stop() {
+=== Memory/ClickyAgentStandingContextLedger.swift (244 lines) ===
+  L9: public nonisolated enum ClickyAgentStandingContextSection: String, Codable, CaseIterable, Hashable, Sendable {
+  L16: public nonisolated enum ClickyAgentStandingContextLedger {
+  L20:     public nonisolated struct ThreadFingerprints: Codable, Equatable, Sendable {
+  L21:         public var sections: [String: String]
+  L23:         public init(sections: [String: String] = [:]) {
+  L28:     public nonisolated struct Ledger: Codable, Equatable, Sendable {
+  L29:         public var fingerprintsByThreadID: [String: ThreadFingerprints]
+  L30:         public var threadOrder: [String]
+  L37:         public init(
+  L46:     public nonisolated struct EvaluationResult: Equatable, Sendable {
+  L47:         public let sectionsToInject: Set<ClickyAgentStandingContextSection>
+  L48:         public let currentFingerprints: [ClickyAgentStandingContextSection: String]
+  L49:         public let isFirstTurnForThread: Bool
+  L51:         public func shouldInject(_ section: ClickyAgentStandingContextSection) -> Bool {
+  L56:     public nonisolated struct PayloadResult: Equatable, Sendable {
+  L57:         public let injectedText: String
+  L58:         public let evaluation: EvaluationResult
+=== Memory/UserMemoryStore.swift (511 lines) ===
+  L9: public nonisolated struct ClickyLearnedHowTo: Codable, Equatable, Identifiable, Sendable {
+  L10:     public var id: String { "\(jobID ?? "global")|\(text)" }
+  L12:     public let text: String
+  L13:     public let learnedAt: Date
+  L14:     public let jobID: String?
+  L22:     public init(text: String, learnedAt: Date = Date(), jobID: String? = nil) {
+  L30: public final class ClickyLearnedHowTos: ObservableObject {
+  L31:     public static let shared = ClickyLearnedHowTos()
+  L36:     @Published private(set) var howTos: [ClickyLearnedHowTo] = []
+  L38:     public init(defaults: UserDefaults = .standard) {
+  L43:     public func record(_ rawText: String, jobID: String? = nil) {
+  L58:     public func recordAll(_ lines: [String], jobID: String? = nil) {
+  L64:     public func relevantHowTos(forPrompt prompt: String, limit: Int = 8) -> [ClickyLearnedHowTo] {
+  L97:     public func formattedPromptBlock(forPrompt prompt: String, limit: Int = 8) -> String? {
+  L104:     public func removeAll() {
+  L128: public nonisolated struct UserMemoryProfileResponse: Codable, Equatable, Sendable {
+  L129:     public let markdown: String
+  L130:     public let hasProfile: Bool
+  L137:     public init(markdown: String, hasProfile: Bool) {
+  L144: public final class UserMemoryStore: ObservableObject {
+  L145:     public static let shared = UserMemoryStore()
+  L150:     @Published private(set) var markdown: String = ""
+  L151:     @Published private(set) var standingPreferences: [String] = []
+  L157:     public var userMemoryFileURL: URL {
+  L161:     public var helperAboutUserFileURL: URL {
+  L167:     public var hasProfile: Bool {
+  L171:     public init(
+  L188:     public func loadFromDisk() {
+  L215:     public func save(_ newMarkdown: String) {
+  L223:     public func appendPreference(_ preference: String) {
+  L234:     public func removePreference(_ preference: String) {
+  L264:     public func extractAndPersistPreferences(fromUserText userText: String) -> [String] {
+  L280:     public func formattedUserMemoryPromptBlock() -> String? {
+=== OpenCodexService.swift (350 lines) ===
+  L21: nonisolated public struct OpenCodexModelCapabilities: Codable, Hashable, Sendable {
+  L22:     public let contextLength: Int?
+  L23:     public let maxOutputTokens: Int?
+  L24:     public let outputModalities: [String]?
+  L25:     public let inputModalities: [String]?
+  L26:     public let supportsToolUse: Bool?
+  L27:     public let supportsStreaming: Bool?
+  L28:     public let supportsReasoning: Bool?
+  L29:     public let supportsReasoningEffort: Bool?
+  L30:     public let supportsVision: Bool?
+  L31:     public let reasoningEffort: [String]?
+  L47: nonisolated public struct OpenCodexModel: Identifiable, Codable, Hashable, Sendable {
+  L48:     public let id: String
+  L49:     public let object: String?
+  L50:     public let ownedBy: String?
+  L51:     public let supportsVision: Bool
+  L52:     public let inputModalities: [String]
+  L53:     public let apiTypes: [String]
+  L54:     public let reasoningEfforts: [String]
+  L55:     public let maxOutputTokens: Int?
+  L56:     public let contextLength: Int?
+  L57:     public let supportsToolUse: Bool
+  L58:     public let capabilities: OpenCodexModelCapabilities?
+  L72:     public init(
+  L98:     public init(from decoder: Decoder) throws {
+  L138:     public func encode(to encoder: Encoder) throws {
+  L150:     public var displayName: String {
+  L166: public final class OpenCodexService: ObservableObject {
+  L167:     public static let shared = OpenCodexService()
+  L169:     @Published public var isHealthy: Bool = false
+  L170:     @Published public var availableModels: [OpenCodexModel] = []
+  L171:     @Published public var visionModels: [OpenCodexModel] = []
+  L172:     @Published public var agentModels: [OpenCodexModel] = []
+  L173:     @Published public var lastCheckTime: Date?
+  L174:     @Published public var lastError: String?
+  L175:     @Published public var latencyMs: Int = 0
+  L247:     public func modelInfo(for modelID: String) -> OpenCodexModel? {
+  L251:     public func refresh() async {
+=== Routines/ClickyRoutineScheduler.swift (912 lines) ===
+  L14: public nonisolated enum ClickyRoutineRunTrigger: String, Codable, Sendable {
+  L19: public nonisolated enum ClickyRoutineRunOutcome: Equatable, Sendable {
+  L25: public nonisolated struct ClickyRoutine: Identifiable, Codable, Equatable, Sendable {
+  L26:     public let id: String
+  L27:     public var clickySlug: String?
+  L28:     public var jobID: String?
+  L29:     public var title: String
+  L30:     public var taskPrompt: String
+  L31:     public var intervalSeconds: TimeInterval
+  L32:     public let createdAt: Date
+  L33:     public var isPaused: Bool
+  L34:     public var nextRunAt: Date?
+  L35:     public var runCount: Int
+  L36:     public var lastRunStartedAt: Date?
+  L37:     public var lastRunFinishedAt: Date?
+  L38:     public var lastRunSummary: String?
+  L39:     public var lastRunFailed: Bool
+  L40:     public var pendingRetryAt: Date?
+  L41:     public var lastRunTaskIdentifier: String?
+  L42:     public var consecutiveFailedRunCount: Int
+  L43:     public var waitingForNetworkSince: Date?
+  L44:     public var scheduledMinuteOfDay: Int?
+  L45:     public var scheduledWeekday: Int?
+  L46:     public var scheduledWeekdays: [Int]?
+  L72:     public var intervalMinutes: Int {
+  L77:     public init(
+  L127:     public init(from decoder: Decoder) throws {
+  L152:     public var resolvedWeekdays: [Int] {
+  L162:     public func computeNextRunDate(after referenceDate: Date, calendar: Calendar = .current) -> Date {
+  L215:     public var cadenceLabel: String {
+  L269: public nonisolated final class ClickyRoutineNetworkObserver: @unchecked Sendable {
+  L276:     public init(onAvailabilityChanged: @escaping @MainActor @Sendable (Bool) -> Void) {
+  L280:     public func start() {
+  L307:     public func stop() {
+  L324: public final class ClickyRoutineFullWakeObserver {
+  L335:     public var isInDarkWakeOrSleep: Bool {
+  L339:     public init(
+  L347:     public func start() {
+  L385:     public func stop() {
+  L440: public final class ClickyRoutineKeepAwake {
+  L444:     public init() {}
+  L455:     public func sync(hasArmedRoutines: Bool) -> Bool {
+  L475:     public func release() {
+  L483: public nonisolated enum RepeatJobAction: String, Codable, Sendable {
+  L490: public nonisolated struct RepeatJobResult: Equatable, Codable, Sendable {
+  L491:     public let ok: Bool
+  L492:     public let status: String
+  L493:     public let routineID: String?
+  L494:     public let nextRunAt: Date?
+  L495:     public let message: String
+  L499: public final class ClickyRoutineScheduler: ObservableObject {
+  L500:     public static let shared = ClickyRoutineScheduler()
+  L507:     @Published private(set) var routines: [ClickyRoutine] = []
+  L508:     @Published private(set) var isNetworkAvailable: Bool = true
+  L509:     @Published private(set) var isSleepingOrDarkWake: Bool = false
+  L510:     @Published private(set) var isKeepAwakeAssertionActive: Bool = false
+  L512:     public var onDispatchRoutine: (@MainActor (ClickyRoutine, ClickyRoutineRunTrigger) async -> ClickyRoutineRunOutcome)?
+  L521:     public init(defaults: UserDefaults = .standard) {
+  L527:     public func start(pollIntervalSeconds: TimeInterval = 30.0) {
+  L565:     public func stop() {
+  L577:     public func addOrUpdate(_ routine: ClickyRoutine) -> ClickyRoutine {
+  L595:     public func togglePause(id: String) {
+  L600:     public func setPaused(id: String, paused: Bool) {
+  L615:     public func delete(id: String) {
+  L622:     public func routine(forJobID jobID: String) -> ClickyRoutine? {
+  L626:     public func routines(forClickySlug slug: String) -> [ClickyRoutine] {
+  L630:     public func runNow(id: String) async {
+  L635:     public func evaluateDueRoutines(now: Date = Date()) async {
+  L671:     public func recordRunCompleted(
+  L712:     public func handleRepeatThisJob(
+=== ScreenDrawing/ClickyThreeKernel.swift (1055 lines) ===
+  L17: public nonisolated struct ClickyThreeGeometryMesh: Sendable {
+  L18:     public let positions: [Float]
+  L19:     public let normals: [Float]
+  L20:     public let uvs: [Float]
+  L21:     public let indices: [UInt32]
+  L22:     public let samples: [Float]
+  L24:     public var vertexCount: Int { positions.count / 3 }
+  L25:     public var triangleCount: Int { indices.count / 3 }
+  L28: public nonisolated enum ClickyThreeKernelError: LocalizedError, Sendable {
+  L34:     public var errorDescription: String? {
+  L52: public final class ClickyThreeKernel: @unchecked Sendable {
+  L53:     public nonisolated static let shared = ClickyThreeKernel()
+  L74:     public nonisolated func prewarmShape(kind: String, recipeJSON: String) {
+  L84:     public nonisolated func buildShapeAsync(kind: String, recipeJSON: String) async throws -> ClickyThreeGeometryMesh {
+  L106:     public nonisolated func buildShape(kind: String, recipeJSON: String) throws -> ClickyThreeGeometryMesh {
+  L119:     public nonisolated func clearCache() {
+  L320: public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
+  L322:     public struct LabelProjection: Sendable {
+  L323:         public let id: String
+  L324:         public let text: String
+  L325:         public let point2D: CGPoint
+  L326:         public let side: String?
+  L327:         public let size: CGFloat
+  L328:         public let color: NSColor
+  L331:     public let stageID: String
+  L332:     public var onTickSample: ((_ stageID: String, _ ticks: [(id: String, elapsed: Double)], _ dt: Double) -> [Float]?)?
+  L333:     public var onProjectedLabelsUpdated: (([LabelProjection]) -> Void)?
+  L373:     public init(stageID: String, frame: NSRect, look: String?, cameraJSON: String?) {
+  L462:     public func addOrUpdatePart(partJSON: String) {
+  L555:     public func addTick(tickID: String) {
+  L561:     public func applyMotion(opJSON: String) {
+  L668:     public func applyCameraConfig(jsonString: String) {
+  L686:     public func addLabel(labelJSON: String, fallbackColor: NSColor) {
+  L712:     public func removePart(id: String) {
+  L720:     nonisolated public func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+=== ScreenDrawing/ScreenAnnotationManager.swift (592 lines) ===
+  L18: public struct GuidedClickTarget: Identifiable, Sendable {
+  L19:     public let id: String
+  L20:     public let markIndex: Int
+  L21:     public let role: String // "target" | "hover"
+  L22:     public let center: CGPoint // canvas coordinates
+  L23:     public let radius: CGFloat
+  L24:     public let box: CGRect?
+  L25:     public let label: String?
+  L26:     public let lineIndex: Int
+  L57: public final class ScreenAnnotationManager: ObservableObject {
+  L58:     public static let shared = ScreenAnnotationManager()
+  L60:     @Published public private(set) var isActive: Bool = false
+  L61:     @Published public private(set) var activeTargets: [GuidedClickTarget] = []
+  L62:     @Published public private(set) var latestCaption: ClickyCaptionState?
+  L63:     @Published public private(set) var lastCompletedTarget: GuidedClickTarget?
+  L65:     public var onGuidedTargetCompleted: ((GuidedClickTarget) -> Void)?
+  L66:     public var onAskFollowUp: ((String) -> Void)?
+  L67:     public var onHandOffRequested: (([String: Any]) -> Void)?
+  L68:     public var onScreenChangeCancelled: (() -> Void)?
+  L70:     public let engine = ScreenDrawingNativeEngine()
+  L96:     public func executeDrawingProgram(_ script: String, on screen: NSScreen? = nil, subtitles: Bool = false) {
+  L122:     public func beginStreamingProgram(on screen: NSScreen? = nil, subtitles: Bool = false) {
+  L139:     public func feedStreamingResponse(_ responseText: String, done: Bool) -> ClickyDrawingAnalysis? {
+  L163:     public func notifySpeechLineStarted(_ lineIndex: Int) {
+  L167:     public func notifySpeechLineLength(_ lineIndex: Int, seconds: Double) {
+  L172:     public func clearAll() {
+  L186:     public func handleScreenChanged() {
+=== ScreenDrawing/ScreenDrawingCanvasView.swift (1618 lines) ===
+  L18: public struct ClickyActionButtonPayload: Identifiable {
+  L19:     public let id: Int
+  L20:     public let markIndex: Int
+  L21:     public let text: String
+  L22:     public let kind: String
+  L23:     public let value: Any
+  L24:     public let box: CGRect
+  L30: public final class ScreenDrawingCanvasView: NSView {
+  L34:     public var onActionButtonPressed: ((ClickyActionButtonPayload) -> Void)?
+  L35:     public var onCardCloseRequested: ((ClickyDrawingCard) -> Void)?
+  L36:     public var onCardZoomRequested: ((ClickyDrawingCard) -> Void)?
+  L37:     public var onCardMoved: ((ClickyDrawingCard, CGPoint) -> Void)?
+  L38:     public var onTick3DRequested: ((_ stageID: String, _ ticks: [(id: String, elapsed: Double)], _ dt: Double) -> [Float]?)?
+  L132:     public func configureCanvas(size: CGSize, inkHex: String? = nil) {
+  L180:     public func clearAll() {
+  L219:     public func applyRenderOps(_ ops: [ClickyRenderOp]) {
+  L252:     public func registerActions(_ actions: [ClickyDrawingAction]) {
+  L274:     public func showActionButton(for event: ClickyButtonReadyEvent) {
+  L311:     public func syncCards(_ cards: [ClickyDrawingCard]) {
+  L1239:     func update(text: ClickyRenderTextDescription, fillColor: NSColor, knockoutColor: NSColor?, knockoutWidth: CGFloat) {
+=== ScreenDrawing/ScreenDrawingNativeEngine.swift (1555 lines) ===
+  L20: public struct ClickyRenderOp: Identifiable {
+  L21:     public enum OpKind: String {
+  L30:     public let id = UUID()
+  L31:     public let op: OpKind
+  L32:     public let group: String?
+  L33:     public let beforeNodeID: Int?
+  L34:     public let nodeID: Int?
+  L35:     public let wrapperGroupID: Int?
+  L36:     public let childNodeID: Int?
+  L37:     public let maskID: String?
+  L38:     public let propKey: String?
+  L39:     public let propValue: Any?
+  L40:     public let node: ClickyRenderNode?
+  L41:     public let motionBegin: Double?
+  L42:     public let motionDuration: Double?
+  L43:     public let motionTiming: [Double]?
+  L44:     public let motionItems: [ClickyMotionItem]
+  L47: public struct ClickyMotionItem {
+  L48:     public let key: String
+  L49:     public let nodeID: Int?
+  L50:     public let maskID: String?
+  L51:     public let from: Any?
+  L52:     public let to: Any?
+  L55: public struct ClickyRenderAnimation {
+  L56:     public let name: String
+  L57:     public let duration: Double
+  L58:     public let delay: Double
+  L59:     public let timing: [Double]
+  L60:     public let startedAt: Double
+  L63: public nonisolated struct ClickyRenderTextLine: Sendable {
+  L64:     public let x: Double?
+  L65:     public let dy: Double
+  L66:     public let text: String
+  L69: public nonisolated struct ClickyRenderTextDescription: Sendable {
+  L70:     public let family: String
+  L71:     public let size: Double
+  L72:     public let weight: Int
+  L73:     public let anchor: String
+  L74:     public let baseline: String
+  L75:     public let x: Double
+  L76:     public let y: Double
+  L77:     public let lines: [ClickyRenderTextLine]
+  L80: public final class ClickyRenderNode {
+  L81:     public let nodeID: Int
+  L82:     public let tag: String
+  L83:     public let attributes: [String: String]
+  L84:     public let styles: [String: String]
+  L85:     public let markIndex: Int?
+  L86:     public let animation: ClickyRenderAnimation?
+  L87:     public let text: ClickyRenderTextDescription?
+  L88:     public let children: [ClickyRenderNode]
+  L90:     public init(
+  L113: public struct ClickyDrawingAction: Identifiable, Sendable {
+  L114:     public let id: String
+  L115:     public let role: String
+  L116:     public let x: Double
+  L117:     public let y: Double
+  L118:     public let radius: Double
+  L119:     public let box: [Double]?
+  L120:     public let label: String?
+  L121:     public let text: String?
+  L122:     public let lineIndex: Int
+  L123:     public let markIndex: Int
+  L125:     public var isInteractiveButton: Bool { role == "button" }
+  L126:     public var isGuidedTarget: Bool { role == "target" || role == "hover" }
+  L129: public struct ClickyDrawingAnalysis: Sendable {
+  L130:     public let lines: [String]
+  L131:     public let actions: [ClickyDrawingAction]
+  L132:     public let markCount: Int
+  L133:     public let inkedCount: Int
+  L134:     public let hasPicture: Bool
+  L135:     public let firstLine: Int
+  L136:     public let error: String?
+  L137:     public let warnings: [String]
+  L138:     public let pointingLines: [Int]
+  L139:     public let cardLines: [Int]
+  L142: public struct ClickyDrawingCardChrome: Sendable {
+  L143:     public let markIndex: Int
+  L144:     public let box: CGRect
+  L145:     public let headerHeight: Double
+  L146:     public let scale: Double
+  L147:     public let isZoomed: Bool
+  L148:     public let title: String
+  L149:     public let has3D: Bool
+  L152: public struct ClickyDrawingCard: Identifiable, Sendable {
+  L153:     public var id: String { "\(marks.first ?? 0)-\(Int(box.origin.x))-\(Int(box.origin.y))" }
+  L154:     public let box: CGRect
+  L155:     public let marks: [Int]
+  L156:     public let unitNodeIDs: [Int]
+  L157:     public let windowChrome: ClickyDrawingCardChrome?
+  L160: public struct ClickySubtitleChip: Identifiable, Sendable {
+  L161:     public let id: String
+  L162:     public let label: String
+  L163:     public let state: String
+  L164:     public let isLate: Bool
+  L167: public struct ClickyCaptionState: Sendable {
+  L168:     public let header: String
+  L169:     public let text: String
+  L170:     public let chips: [ClickySubtitleChip]
+  L173: public struct ClickyButtonReadyEvent: Sendable {
+  L174:     public let markIndex: Int
+  L175:     public let delaySeconds: Double
+  L180: public enum ClickyDrawFontRegistry {
+  L244: public enum ClickySVGPathParser {
+  L260:         func hasNextNumber() -> Bool {
+  L266:         func nextNumber() -> Double {
+  L610:         func vecAngle(_ ux: Double, _ uy: Double, _ vx: Double, _ vy: Double) -> Double {
+  L651: public final class ScreenDrawingNativeEngine: ObservableObject {
+  L653:     @Published public private(set) var latestAnalysis: ClickyDrawingAnalysis?
+  L654:     @Published public private(set) var captionState: ClickyCaptionState?
+  L655:     @Published public private(set) var isStreaming: Bool = false
+  L656:     @Published public private(set) var isFinished: Bool = true
+  L657:     @Published public private(set) var latestError: String?
+  L660:     public var onRenderOps: (([ClickyRenderOp]) -> Void)?
+  L662:     public var onButtonReady: ((ClickyButtonReadyEvent) -> Void)?
+  L665:     public var luminanceSampler: ((CGRect) -> Double)?
+  L667:     public var busynessSampler: ((CGRect) -> Double)?
+  L669:     public var figuresFloat: Bool = true
+  L678:     public init() {
+  L692:     public func beginStream(size: CGSize, displayWidthPoints: CGFloat? = nil, subtitles: Bool = false, inkHex: String? = nil) {
+  L716:     public func feed(code: String, done: Bool) -> ClickyDrawingAnalysis? {
+  L737:     public func continueStream(subtitles: Bool? = nil) -> (firstLine: Int, marks: Int, code: String)? {
+  L753:     public func markLineStarted(_ lineIndex: Int) {
+  L758:     public func setLineLength(_ lineIndex: Int, seconds: Double) {
+  L763:     public func finish() {
+  L770:     public func clear() {
+  L782:     public func renderWhole(size: CGSize, displayWidthPoints: CGFloat? = nil, code: String, inkHex: String? = nil) {
+  L801:     public func dropPointing() -> (dropped: Int, left: Int)? {
+  L812:     public func keepNotesOnly() -> (kept: Int, dropped: Int)? {
+  L823:     public func currentCards() -> [ClickyDrawingCard] {
+  L866:     public func moveCard(marks: [Int], dx: Double, dy: Double) -> Int {
+  L877:     public func closeCard(marks: [Int]) -> (closed: Int, left: Int)? {
+  L889:     public func zoomCard(marks: [Int], to transform: [Double]?) -> Int {
+  L897:     public func buttonSpot(box: CGRect, gap: Double = 6, avoid: [CGRect] = []) -> CGRect {
+  L913:     public func tick3D(stageID: String, ticks: [(id: String, elapsed: Double)], dt: Double) -> [Float]? {
+  L937:     public func drainRenderNow() {
+=== UnifiedLLMClient.swift (806 lines) ===
+  L9: public final class UnifiedLLMClient {
+  L10:     public static let shared = UnifiedLLMClient()
+  L14:     public init() {
+  L37:     public func completeText(
+  L53:     public func analyzeImageStreaming(
+=== Updates/IdleUpdateInstallPolicy.swift (232 lines) ===
+  L10: public nonisolated enum IdleUpdateInstallWaitReason: String, CaseIterable, Equatable, Sendable {
+  L25: public nonisolated struct IdleUpdateInstallConditions: Equatable, Sendable {
+  L26:     public var secondsSinceHeyClickyWasLastBusy: TimeInterval
+  L27:     public var isOnboardingInProgress: Bool
+  L28:     public var activeAgentTaskCount: Int
+  L29:     public var isVoiceTurnActive: Bool
+  L30:     public var isRealtimeVoiceSessionOpen: Bool
+  L31:     public var isRecordingOrDictating: Bool
+  L32:     public var isNotchOpen: Bool
+  L33:     public var isNotchAnswerInProgress: Bool
+  L34:     public var isShowingSomethingOnScreen: Bool
+  L35:     public var isDrivingTheMac: Bool
+  L36:     public var isOnACall: Bool
+  L37:     public var isFrontmostAppFullscreen: Bool
+  L39:     public init(
+  L68: public nonisolated enum IdleUpdateInstallDecision: Equatable, Sendable {
+  L72:     public var logDescription: String {
+  L83: public nonisolated enum IdleUpdateInstallPolicy {
+  L145: public final class SparkleUpdateDelegate: NSObject, SPUUpdaterDelegate, ObservableObject {
+  L146:     @Published public private(set) var hasPendingIdleUpdateInstall: Bool = false
+  L147:     @Published public private(set) var pendingUpdateVersion: String?
+  L148:     @Published public private(set) var lastLoggedIdleUpdateInstallDecision: String?
+  L150:     public var conditionsProvider: (() -> IdleUpdateInstallConditions)?
+  L151:     public var autoInstallEnabled: Bool = true
+  L157:     public init(
+  L166:     public func updater(
+  L184:     public func evaluatePendingInstallNow() {
+  L210:     public func triggerImmediateInstallIfReady() {
+  L219:     public func stopIdlePolling() {
