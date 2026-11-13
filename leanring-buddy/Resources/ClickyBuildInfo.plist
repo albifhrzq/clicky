@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
 	<key>ClickyGitBranchName</key>
-	<string>changelog/v1.1.2</string>
+	<string>main</string>
 	<key>ClickyGitCommitShortSHA</key>
-	<string>9bd03d487</string>
+	<string>bb70d07c3</string>
 </dict>
 </plist>

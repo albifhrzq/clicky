@@ -459,7 +459,7 @@ public final class UnifiedLLMClient {
             let jsonString = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
             guard let jsonData = jsonString.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                  let responseObj = obj["response"] as? [String: Any] ?? obj as? [String: Any],
+                  let responseObj = (obj["response"] as? [String: Any]) ?? Optional(obj),
                   let candidates = responseObj["candidates"] as? [[String: Any]],
                   let first = candidates.first,
                   let content = first["content"] as? [String: Any],

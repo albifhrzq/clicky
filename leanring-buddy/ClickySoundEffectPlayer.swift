@@ -23,7 +23,7 @@ public enum ClickySoundEffect: String {
 public final class ClickySoundEffectPlayer {
     public static let shared = ClickySoundEffectPlayer()
 
-    private var audioPlayers: [String: AVAudioPlayer] = [:]
+    nonisolated(unsafe) private var audioPlayers: [String: AVAudioPlayer] = [:]
     private let queue = DispatchQueue(label: "com.clicky.sound-player", qos: .userInitiated)
 
     private init() {}

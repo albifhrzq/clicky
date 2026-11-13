@@ -9,4 +9,5 @@
 ## Uploading
 - `upload {tabId, ref, paths}` takes absolute paths (up to 10 files, 100 MB each) and the ref of the file field, its label, or the page's own "Upload" / "Attach" button. No file dialog appears. It also works as a batch step, so a form with an attachment is still one call.
 - HeyClicky checks the paths first and refuses private places (keys, keychains, `.env` and key files, browser profiles, the app's own settings). Don't look for another route to those files.
+- Files from outside your job folder need the user's yes on HeyClicky's card, once a turn. When you know a form needs them, call `upload_approval {files, tabId}` before your first upload and list every file you'll need, as paths or words like "your passport photo" (no `files` asks in general; `tabId` names the site on the card). The answer covers your uploads until the turn ends, and a no stands for the turn too. An upload with no earlier ask shows the card itself. Your own job folder needs nothing, and never copy a file into it to skip the card.
 - Whether to ask first is the approval list's call: `references/confirmations.md`.

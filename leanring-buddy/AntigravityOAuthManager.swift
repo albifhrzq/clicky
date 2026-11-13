@@ -5,6 +5,7 @@
 
 import Foundation
 import AppKit
+import Combine
 import CryptoKit
 
 public final class AntigravityOAuthManager: ObservableObject {

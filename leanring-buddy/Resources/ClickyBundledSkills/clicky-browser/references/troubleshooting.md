@@ -9,7 +9,8 @@ Match the start of the error text. Never loop: if the fix below doesn't work onc
 | `Browser permission was declined or the turn ended.` / `Browser access is unavailable for this turn.` | The user said no, or the turn is over. Stop using the browser this turn; finish without it and say what you couldn't check. |
 | `Another browser permission request is open. Wait for it to finish.` | Another Clicky is asking right now. Do other work first, then try once more. |
 | `Browser access stopped for this turn…` / `Browser access stopped. An in-flight action may already have completed…` | The user pressed Stop. Stop all browser work, report what was done and what may have happened. |
-| `Browser action timed out. Its outcome is unknown…` / `The agent turn ended.` | Browser access for this turn is over. Don't repeat the action; tell the user it may or may not have gone through, and look first next turn. |
+| `This browser action took too long, so its outcome is unknown…` | You still have the browser. Take a snapshot of the tab first, see whether it went through, and only then carry on. Never repeat it blindly. |
+| `Browser actions timed out … times in this turn…` / `The agent turn ended.` | Browser access for this turn is over (Chrome is still connected; never tell the user to reconnect it). Tell the user what you finished and what may or may not have gone through. |
 | `The page didn't answer in time. Nothing was changed…` / `The page did not respond in time (it may be a sleeping background tab)…` | A read stalled, usually on a tab the user left in the background. Try once more; if it stalls again, `open` the same URL in your own tab and read it there. Nothing needs re-checking. |
 | `Browser connection changed. Start a new turn.` / `Browser tool is unavailable outside its active agent turn.` | Chrome reconnected or the turn changed. Tell the user; continue in the next turn. |
 
@@ -50,7 +51,10 @@ Match the start of the error text. Never loop: if the fix below doesn't work onc
 | `<path> is in a private place (keys, keychains, browser profiles or app settings), so it is never uploaded.` | Don't upload it or a copy of it. Tell the user if the task needs it. |
 | `This file field takes one file.` | Upload one file, or one per field. |
 | `No file chooser opened…` / `This is not a file field…` | Snapshot; use the file field itself, its label, or the page's own upload button. |
-| `Chrome refused to give the file to the page…` | The user has to turn on "Allow access to file URLs" for HeyClicky once in `chrome://extensions`. Say so; don't retry. |
+| `The user said no to adding <file> to <site>…` | Don't try again, and don't copy the file to get around it. Carry on without it and say what's still needed. |
+| `HeyClicky asked the user about adding <file> to <site> and they haven't answered…` | Leave the page as it is and end your turn saying you need their yes. The card comes back when you try next turn. |
+| `This upload needs a newer version of the HeyClicky Chrome extension…` / `Chrome refused to give the file to the page…` | Chrome hasn't updated the extension yet. Ask the user to add the file to the page themselves: name the file and the field. There is no Chrome setting for them to change. |
+| `The page is no longer on <site>, so the file wasn't added…` | The page moved while the file was on its way. Look at the page and try again. |
 | `Only http(s) links can be downloaded…` / `This element has no link to download…` | Click the element instead; a file the page downloads comes back as `downloads`. |
 | `The download failed (<reason>).` / `Chrome could not start the download…` | Say it failed and why; try once more only for a network error. |
 
