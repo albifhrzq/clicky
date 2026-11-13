@@ -60,6 +60,7 @@
 			membershipExceptions = (
 				AGENTS.md,
 				Helpers/ClickyBrowserHost,
+				Info.plist,
 				Resources/AGENTS.md,
 				Resources/ClickyBundledSkills/clicky-browser/SKILL.md,
 				Resources/ClickyBundledSkills/clicky-browser/references/batching.md,
