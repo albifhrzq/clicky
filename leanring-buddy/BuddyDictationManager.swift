@@ -405,6 +405,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     private var activePermissionRequestTask: Task<Bool, Never>?
     private var wakeSilenceMonitorTask: Task<Void, Never>?
     private var shortcutMonitorCancellable: AnyCancellable?
+    private var configSyncCancellables: Set<AnyCancellable> = []
     nonisolated(unsafe) private var sleepObserver: NSObjectProtocol?
     /// Timestamp of the last completed permission request, used to debounce
     /// rapid follow-up requests that arrive before macOS updates its cache.
@@ -426,6 +427,23 @@ final class BuddyDictationManager: NSObject, ObservableObject {
                 self?.handleSystemSleepInterruption()
             }
         }
+
+        let config = ClickyConfiguration.shared
+        config.$selectedVoiceLanguage
+            .combineLatest(config.$dictationLanguageCode, config.$dictationAutoDetect)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _, _ in
+                self?.refreshTranscriptionProvider()
+            }
+            .store(in: &configSyncCancellables)
+
+        config.$assemblyAIAPIKey
+            .combineLatest(config.$openaiAPIKey)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in
+                self?.refreshTranscriptionProvider()
+            }
+            .store(in: &configSyncCancellables)
     }
 
     deinit {

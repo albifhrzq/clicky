@@ -369,7 +369,9 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
 
     private static func makeRecognizer(for phraseSetting: String) -> SFSpeechRecognizer? {
         let lower = phraseSetting.lowercased()
-        let selectedLang = ClickyConfiguration.shared.selectedVoiceLanguage.lowercased()
+        let selectedLang = ClickyConfiguration.shared.selectedVoiceLanguage
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
 
         // Honour the user's explicit language instead of guessing from the phrase.
         if selectedLang != "auto", !selectedLang.isEmpty,

@@ -1891,6 +1891,8 @@ struct HomeSpaceSettingsPage: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? DS.Colors.accentSubtle : Color.clear)

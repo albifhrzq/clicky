@@ -77,6 +77,19 @@ public final class AgentHarnessRunnerRuntime: ObservableObject {
         let resolvedUserSkills = skillDirectories.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         let resolvedImages = imagePaths.filter { FileManager.default.fileExists(atPath: $0) }
 
+        let langCode = config.selectedVoiceLanguage
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let effectiveInstructions: String
+        if !langCode.isEmpty && langCode != "auto" {
+            let language = VoiceLanguageCatalog.language(forCode: langCode)
+            let displayName = language?.name ?? langCode
+            let bcp47 = language?.bcp47Locale ?? langCode
+            effectiveInstructions = instructions + "\n\n<response_language>\nAlways reply to the user in \(displayName) (locale: \(bcp47)) unless explicitly asked otherwise.\n</response_language>"
+        } else {
+            effectiveInstructions = instructions
+        }
+
         var payload: [String: Any] = [
             "job": sanitizedJobID,
             "harness": "h1",
@@ -84,7 +97,7 @@ public final class AgentHarnessRunnerRuntime: ObservableObject {
             "text": prompt,
             "workspace": workspaceURL.path,
             "model": effectiveModel,
-            "instructions": instructions,
+            "instructions": effectiveInstructions,
             "skills": [],
             "userSkills": resolvedUserSkills,
             "mcp": normalizedMCP,

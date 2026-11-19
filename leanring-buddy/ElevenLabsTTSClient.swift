@@ -93,7 +93,7 @@ final class ElevenLabsTTSClient: NSObject, ObservableObject, AVAudioPlayerDelega
                 request.setValue(key, forHTTPHeaderField: "xi-api-key")
             }
 
-            let body: [String: Any] = [
+            var body: [String: Any] = [
                 "text": text,
                 "model_id": "eleven_flash_v2_5",
                 "voice_settings": [
@@ -101,6 +101,10 @@ final class ElevenLabsTTSClient: NSObject, ObservableObject, AVAudioPlayerDelega
                     "similarity_boost": 0.75
                 ]
             ]
+
+            if let elevenLanguageCode = Self.resolvedElevenLabsLanguageCode(from: config.selectedVoiceLanguage) {
+                body["language_code"] = elevenLanguageCode
+            }
 
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -159,18 +163,43 @@ final class ElevenLabsTTSClient: NSObject, ObservableObject, AVAudioPlayerDelega
     }
 
     /// Runs a quick voice test from Settings so users get immediate audio + HTTP status feedback.
-    func testVoice(sampleText: String = "Halo, suara ElevenLabs kamu sudah aktif dan siap digunakan.") async {
+    func testVoice(sampleText: String? = nil) async {
         guard !isTestingVoice else { return }
         isTestingVoice = true
         defer { isTestingVoice = false }
 
+        let resolvedSample: String
+        if let sampleText, !sampleText.isEmpty {
+            resolvedSample = sampleText
+        } else if ClickyConfiguration.shared.selectedVoiceLanguage.lowercased() == "en" {
+            resolvedSample = "Hello! Your ElevenLabs voice is active and ready."
+        } else {
+            resolvedSample = "Halo, suara ElevenLabs kamu sudah aktif dan siap digunakan."
+        }
+
         do {
-            try await speakText(sampleText, allowSystemFallback: false)
+            try await speakText(resolvedSample, allowSystemFallback: false)
         } catch is CancellationError {
             // Cancelled intentionally
         } catch {
             lastErrorMessage = error.localizedDescription
         }
+    }
+
+    private static let elevenFlashV25SupportedLanguages: Set<String> = [
+        "en", "ja", "zh", "de", "hi", "fr", "ko", "pt", "it", "es", "id", "nl",
+        "tr", "fil", "pl", "sv", "bg", "ro", "ar", "cs", "el", "fi", "hr", "ms",
+        "sk", "da", "ta", "uk", "ru", "hu", "no", "vi"
+    ]
+
+    private static func resolvedElevenLabsLanguageCode(from rawLanguageCode: String) -> String? {
+        let normalized = rawLanguageCode
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty, normalized != "auto" else { return nil }
+        let baseCode = normalized.split(separator: "-").first.map(String.init) ?? normalized
+        let mapped = (baseCode == "tl") ? "fil" : baseCode
+        return elevenFlashV25SupportedLanguages.contains(mapped) ? mapped : nil
     }
 
     /// Speaks text offline using macOS `AVSpeechSynthesizer` with optional language and speed rate.
