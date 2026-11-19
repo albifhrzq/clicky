@@ -227,6 +227,7 @@ private struct SystemWideTargetContext {
     let bundleIdentifier: String?
     let focusedElement: AXUIElement?
     let isEditableTextElement: Bool
+    let isSecureTextField: Bool
 }
 
 private struct PasteboardSnapshotItem {
@@ -291,6 +292,28 @@ private nonisolated enum DictationTranscriptArchive {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+}
+
+/// Pure rules that keep idle polling/publishing from invalidating SwiftUI views.
+nonisolated enum ClickyIdleChurnRules {
+    static let audioLevelPublishThreshold: CGFloat = 0.01
+
+    /// Poll slowly once nothing can change; fast while the user is granting permissions.
+    static func permissionPollInterval(allPermissionsGranted: Bool) -> TimeInterval {
+        allPermissionsGranted ? 3.0 : 1.5
+    }
+
+    /// Publish only when the level moved noticeably, or to settle exactly on 0 once.
+    static func shouldPublishAudioLevel(current: CGFloat, next: CGFloat) -> Bool {
+        if next == current { return false }
+        if next == 0 { return true }
+        return abs(next - current) > audioLevelPublishThreshold
+    }
+
+    /// Snap tiny decaying levels to exactly 0 so the decay tail stops publishing.
+    static func settledAudioLevel(_ level: CGFloat) -> CGFloat {
+        level < audioLevelPublishThreshold ? 0 : level
     }
 }
 
@@ -362,7 +385,10 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     }
 
     private var transcriptionProvider: any BuddyTranscriptionProvider
-    private let audioEngine = AVAudioEngine()
+    // AVCaptureSession-based mic input on the Settings-chosen microphone (does not touch the output device).
+    private let microphoneCaptureInput = ClickyMicrophoneCaptureInput(logPrefix: "BuddyDictationManager")
+    // The capture handler runs on a background queue, so it reads the current session through this lock-protected box.
+    private let audioBufferTargetSessionBox = BuddyAudioBufferTargetSessionBox()
     private let unifiedLLMClient = UnifiedLLMClient()
     private var activeTranscriptionSession: (any BuddyStreamingTranscriptionSession)?
     private var activeStartSource: BuddyDictationStartSource?
@@ -604,8 +630,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
             draftCallbacks?.updateDraftText(currentDraftText)
         }
 
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        microphoneCaptureInput.stop()
         activeTranscriptionSession?.cancel()
 
         resetSessionState()
@@ -725,8 +750,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
             try await startRecognitionSession()
             guard !Task.isCancelled else {
                 print("🎙️ BuddyDictationManager: start cancelled (shortcut released during session start)")
-                audioEngine.stop()
-                audioEngine.inputNode.removeTap(onBus: 0)
+                microphoneCaptureInput.stop()
                 activeTranscriptionSession?.cancel()
                 resetSessionState()
                 return
@@ -740,7 +764,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
             isPreparingToRecord = false
             lastErrorMessage = userFacingErrorMessage(
                 from: error,
-                fallback: "couldn't start voice input. try again."
+                fallback: ClickyVoiceMessages.couldntStartVoiceInput
             )
             print("❌ BuddyDictationManager: failed to start recognition session (\(transcriptionProvider.displayName)): \(error)")
             resetSessionState()
@@ -770,8 +794,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         let finalTranscriptFallbackDelaySeconds = activeTranscriptionSession?.finalTranscriptFallbackDelaySeconds
             ?? Self.defaultFinalTranscriptFallbackDelaySeconds
 
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        microphoneCaptureInput.stop()
         activeTranscriptionSession?.requestFinalTranscript()
 
         finalizeFallbackWorkItem?.cancel()
@@ -825,17 +848,26 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         self.activeTranscriptionSession = activeTranscriptionSession
         print("🎙️ BuddyDictationManager: provider ready, starting audio engine")
 
-        let inputNode = audioEngine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
+        // Start failures (no mic, session can't be built) throw into the existing recognition-start error path.
+        audioBufferTargetSessionBox.setSession(activeTranscriptionSession)
+        try microphoneCaptureInput.start(
+            onAudioBuffer: Self.makeAudioBufferHandler(
+                targetSessionBox: audioBufferTargetSessionBox,
+                dictationManager: self
+            )
+        )
+    }
 
-        inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            self?.activeTranscriptionSession?.appendAudioBuffer(buffer)
-            self?.updateAudioPowerLevel(from: buffer)
+    /// Built in a nonisolated context on purpose: the handler runs on the capture delivery queue, and a
+    /// MainActor-isolated closure invoked there would trip Swift's runtime isolation check.
+    private nonisolated static func makeAudioBufferHandler(
+        targetSessionBox: BuddyAudioBufferTargetSessionBox,
+        dictationManager: BuddyDictationManager
+    ) -> @Sendable (AVAudioPCMBuffer) -> Void {
+        return { [weak dictationManager] buffer in
+            targetSessionBox.currentSession()?.appendAudioBuffer(buffer)
+            dictationManager?.updateAudioPowerLevel(from: buffer)
         }
-
-        audioEngine.prepare()
-        try audioEngine.start()
     }
 
     private func handleRecognitionError(_ error: Error) {
@@ -852,7 +884,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
             salvagePartialTranscriptToClipboardIfNeeded(reason: "error")
             lastErrorMessage = userFacingErrorMessage(
                 from: error,
-                fallback: "couldn't transcribe that. try again."
+                fallback: ClickyVoiceMessages.couldntTranscribeThatTryAgain
             )
             cancelCurrentDictation(preserveDraftText: false)
         }
@@ -898,13 +930,16 @@ final class BuddyDictationManager: NSObject, ObservableObject {
         let capturedDraftPrefix = draftTextBeforeCurrentDictation
         let currentDraftCallbacks = draftCallbacks
 
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        microphoneCaptureInput.stop()
         activeTranscriptionSession?.cancel()
 
         resetSessionState()
 
         guard !rawTranscriptText.isEmpty else { return }
+        guard !ClickyTranscriptNoiseFilter.isNoise(rawTranscriptText) else {
+            print("🎙️ BuddyDictationManager: dropped noise-only transcript")
+            return
+        }
 
         let isSystemWide = capturedStartSource == .systemWideHold || capturedStartSource == .systemWideHandsFree
 
@@ -1015,6 +1050,11 @@ final class BuddyDictationManager: NSObject, ObservableObject {
 
         let resolvedContext = targetContext ?? Self.captureSystemWideTargetContext()
 
+        if resolvedContext.isSecureTextField {
+            lastErrorMessage = ClickyVoiceMessages.iDidntFillThatPasswordField
+            return false
+        }
+
         // 1. Try Accessibility direct insertion at caret (zero clipboard disruption)
         if let focusedElement = resolvedContext.focusedElement,
            resolvedContext.isEditableTextElement,
@@ -1022,7 +1062,14 @@ final class BuddyDictationManager: NSObject, ObservableObject {
             return true
         }
 
-        // 2. Fallback: PID-targeted Cmd+V paste with full clipboard snapshot & restore
+        // 2. Fallback: PID-targeted Cmd+V paste with full clipboard snapshot & restore.
+        // Without Accessibility the synthetic paste cannot work, so leave the text on the clipboard instead.
+        guard AXIsProcessTrusted() else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(trimmed, forType: .string)
+            lastErrorMessage = "\(ClickyVoiceMessages.copiedToYourClipboard) · \(ClickyVoiceMessages.enableAccessibilityToInsertDictation)"
+            return false
+        }
         return await pasteWithClipboardRestore(trimmed, targetPID: resolvedContext.processIdentifier)
     }
 
@@ -1039,7 +1086,8 @@ final class BuddyDictationManager: NSObject, ObservableObject {
                 processIdentifier: targetPID,
                 bundleIdentifier: bundleID,
                 focusedElement: nil,
-                isEditableTextElement: false
+                isEditableTextElement: false,
+                isSecureTextField: false
             )
         }
 
@@ -1056,7 +1104,8 @@ final class BuddyDictationManager: NSObject, ObservableObject {
                 processIdentifier: targetPID,
                 bundleIdentifier: bundleID,
                 focusedElement: nil,
-                isEditableTextElement: false
+                isEditableTextElement: false,
+                isSecureTextField: false
             )
         }
 
@@ -1067,8 +1116,17 @@ final class BuddyDictationManager: NSObject, ObservableObject {
             processIdentifier: targetPID,
             bundleIdentifier: bundleID,
             focusedElement: focusedElement,
-            isEditableTextElement: isEditable
+            isEditableTextElement: isEditable,
+            isSecureTextField: Self.isAXElementSecureTextField(focusedElement)
         )
+    }
+
+    /// Password fields expose AXSubrole == AXSecureTextField; never type into them.
+    private static func isAXElementSecureTextField(_ element: AXUIElement) -> Bool {
+        var subroleValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleValue) == .success,
+              let subrole = subroleValue as? String else { return false }
+        return subrole == "AXSecureTextField"
     }
 
     private static func isAXElementEditable(_ element: AXUIElement) -> Bool {
@@ -1309,7 +1367,13 @@ final class BuddyDictationManager: NSObject, ObservableObject {
                 CGFloat(boostedLevel),
                 self.currentAudioPowerLevel * 0.72
             )
-            self.currentAudioPowerLevel = smoothedAudioPowerLevel
+            let settledAudioPowerLevel = ClickyIdleChurnRules.settledAudioLevel(smoothedAudioPowerLevel)
+            if ClickyIdleChurnRules.shouldPublishAudioLevel(
+                current: self.currentAudioPowerLevel,
+                next: settledAudioPowerLevel
+            ) {
+                self.currentAudioPowerLevel = settledAudioPowerLevel
+            }
 
             let now = Date()
             if now.timeIntervalSince(self.lastRecordedAudioPowerSampleDate)
@@ -1338,7 +1402,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     private func requestMicrophoneAndSpeechPermissionsIfNeeded() async -> Bool {
         let hasMicrophonePermission = await requestMicrophonePermissionIfNeeded()
         guard hasMicrophonePermission else {
-            lastErrorMessage = "microphone permission is required for push to talk."
+            lastErrorMessage = ClickyVoiceMessages.microphonePermissionRequiredForPushToTalk
             return false
         }
 
@@ -1348,7 +1412,7 @@ final class BuddyDictationManager: NSObject, ObservableObject {
 
         let hasSpeechRecognitionPermission = await requestSpeechRecognitionPermissionIfNeeded()
         guard hasSpeechRecognitionPermission else {
-            lastErrorMessage = "speech recognition permission is required for push to talk."
+            lastErrorMessage = ClickyVoiceMessages.speechRecognitionPermissionRequiredForPushToTalk
             return false
         }
 
@@ -1439,19 +1503,29 @@ final class BuddyDictationManager: NSObject, ObservableObject {
     }
 
     private func userFacingErrorMessage(from error: Error, fallback: String) -> String {
-        if let localizedError = error as? LocalizedError,
-           let errorDescription = localizedError.errorDescription?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !errorDescription.isEmpty {
-            return errorDescription
-        }
+        ClickyVoiceErrorMapper.message(
+            for: error,
+            providerName: transcriptionProvider.displayName,
+            fallback: fallback
+        )
+    }
+}
 
-        let errorDescription = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !errorDescription.isEmpty,
-           errorDescription != "The operation couldn’t be completed." {
-            return errorDescription
-        }
 
-        return fallback
+/// Lock-protected reference to the transcription session that capture buffers feed, readable from the capture queue.
+nonisolated final class BuddyAudioBufferTargetSessionBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var session: (any BuddyStreamingTranscriptionSession)?
+
+    func setSession(_ newSession: (any BuddyStreamingTranscriptionSession)?) {
+        lock.lock()
+        session = newSession
+        lock.unlock()
+    }
+
+    func currentSession() -> (any BuddyStreamingTranscriptionSession)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return session
     }
 }

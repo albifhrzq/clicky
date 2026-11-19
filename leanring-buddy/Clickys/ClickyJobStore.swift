@@ -245,8 +245,14 @@ public nonisolated struct ClickyJob: Identifiable, Codable, Equatable, Sendable 
         self.waitingStep = try container.decodeIfPresent(ClickyJobUserStep.self, forKey: .waitingStep)
     }
 
+    /// A handed-back step (signing, paying) stops flagging for attention one hour after it was raised.
+    public func isWaitingStepFlagged(now: Date = Date()) -> Bool {
+        guard let waitingStep else { return false }
+        return !ClickyAttentionExpiry.hasExpired(raisedAt: waitingStep.askedAt, now: now)
+    }
+
     public var railPhase: ClickyJobRailPhase {
-        if waitingStep != nil {
+        if isWaitingStepFlagged() {
             return .needsYou
         }
         switch outcome {
@@ -295,6 +301,8 @@ public final class ClickyJobStore: ObservableObject {
 
     @Published private(set) var jobs: [ClickyJob] = []
     @Published public var jobIDsWithRoutines: Set<String> = []
+    /// Set while the local agent shim is waiting out an AI model outage; shown on working job cards.
+    @Published public private(set) var modelRetryStatus: ClickyModelRetryStatus?
     @Published private(set) var interruptedTurnsBySlug: [String: ClickyRestartInterruptionRecord] = [:]
 
     public var activeJobs: [ClickyJob] {
@@ -502,11 +510,26 @@ public final class ClickyJobStore: ObservableObject {
         }
     }
 
-    public func archiveJob(jobID: String) {
+    public func setModelRetryStatus(_ status: ClickyModelRetryStatus?) {
+        if modelRetryStatus != status {
+            modelRetryStatus = status
+        }
+    }
+
+    /// A working agent must be stopped before its conversation is archived.
+    public func canArchive(jobID: String) -> Bool {
+        guard let job = job(withID: jobID) else { return false }
+        return job.outcome != .working
+    }
+
+    @discardableResult
+    public func archiveJob(jobID: String) -> Bool {
+        guard canArchive(jobID: jobID) else { return false }
         updateJob(id: jobID) { job in
             job.isArchived = true
             job.isSeen = true
         }
+        return true
     }
 
     public func setWaitingStep(jobID: String, step: ClickyJobUserStep?) {
@@ -555,13 +578,13 @@ public final class ClickyJobStore: ObservableObject {
             jobs[index].outcome = .stopped
             jobs[index].finishedAt = now
             if jobs[index].summary == nil {
-                jobs[index].summary = "HeyClicky stopped before the agent task finished."
+                jobs[index].summary = String(localized: "The previous run ended before its result was saved.")
             }
             if let lastRunIndex = jobs[index].runs.indices.last,
                jobs[index].runs[lastRunIndex].outcome == .working {
                 jobs[index].runs[lastRunIndex].outcome = .stopped
                 jobs[index].runs[lastRunIndex].finishedAt = now
-                jobs[index].runs[lastRunIndex].summary = "stopped before it finished"
+                jobs[index].runs[lastRunIndex].summary = String(localized: "Stopped before it finished.")
             }
             interruptedTurnsBySlug[jobs[index].clickySlug] = ClickyRestartInterruptionRecord(
                 slug: jobs[index].clickySlug,

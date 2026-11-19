@@ -22,6 +22,12 @@ final class AppleSpeechTranscriptionProvider: BuddyTranscriptionProvider {
     let requiresSpeechRecognitionPermission = true
     let isConfigured = true
     let unavailableExplanation: String? = nil
+    /// BCP-47 locale (e.g. "id-ID") to recognize first; nil keeps the Mac's own locale.
+    private let preferredLocaleIdentifier: String?
+
+    init(preferredLocaleIdentifier: String? = nil) {
+        self.preferredLocaleIdentifier = preferredLocaleIdentifier
+    }
 
     func startStreamingSession(
         keyterms: [String],
@@ -29,7 +35,7 @@ final class AppleSpeechTranscriptionProvider: BuddyTranscriptionProvider {
         onFinalTranscriptReady: @escaping (String) -> Void,
         onError: @escaping (Error) -> Void
     ) async throws -> any BuddyStreamingTranscriptionSession {
-        guard let speechRecognizer = Self.makeBestAvailableSpeechRecognizer() else {
+        guard let speechRecognizer = Self.makeBestAvailableSpeechRecognizer(preferredLocaleIdentifier: preferredLocaleIdentifier) else {
             throw AppleSpeechTranscriptionProviderError(message: "dictation is not available on this mac.")
         }
 
@@ -41,8 +47,8 @@ final class AppleSpeechTranscriptionProvider: BuddyTranscriptionProvider {
         )
     }
 
-    private static func makeBestAvailableSpeechRecognizer() -> SFSpeechRecognizer? {
-        let preferredLocales = [
+    private static func makeBestAvailableSpeechRecognizer(preferredLocaleIdentifier: String?) -> SFSpeechRecognizer? {
+        let preferredLocales = (preferredLocaleIdentifier.map { [Locale(identifier: $0)] } ?? []) + [
             Locale.autoupdatingCurrent,
             Locale(identifier: "en-US")
         ]
@@ -96,7 +102,7 @@ private final class AppleSpeechTranscriptionSession: NSObject, BuddyStreamingTra
         }
     }
 
-    func appendAudioBuffer(_ audioBuffer: AVAudioPCMBuffer) {
+    nonisolated func appendAudioBuffer(_ audioBuffer: AVAudioPCMBuffer) {
         guard !hasRequestedFinalTranscript else { return }
         recognitionRequest.append(audioBuffer)
     }

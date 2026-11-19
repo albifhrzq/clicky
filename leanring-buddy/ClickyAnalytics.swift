@@ -290,12 +290,20 @@ enum ClickyAnalytics {
         capture("onboarding_replayed")
     }
 
-    static func trackOnboardingVideoCompleted() {
-        capture("onboarding_video_completed")
+    static func trackOnboardingTourStep(step: String) {
+        capture("onboarding_tour_step", properties: [
+            "step": step
+        ])
     }
 
-    static func trackOnboardingDemoTriggered() {
-        capture("onboarding_demo_triggered")
+    static func trackOnboardingTourCompleted() {
+        capture("onboarding_tour_completed")
+    }
+
+    static func trackOnboardingTourSkipped(atStep step: String) {
+        capture("onboarding_tour_skipped", properties: [
+            "step": step
+        ])
     }
 
     // MARK: - Permissions

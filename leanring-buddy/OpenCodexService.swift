@@ -177,6 +177,8 @@ public final class OpenCodexService: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let session: URLSession
     private var refreshGeneration: UInt64 = 0
+    private var healthPollCancellable: AnyCancellable?
+    private static let healthPollIntervalSeconds: TimeInterval = 30
 
     private init() {
         let sessionConfiguration = URLSessionConfiguration.ephemeral
@@ -188,15 +190,31 @@ public final class OpenCodexService: ObservableObject {
             await self?.refresh()
         }
 
-        Timer.publish(every: 30, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                Task { [weak self] in
-                    guard ClickyConfiguration.shared.mode == .openCodex else { return }
-                    await self?.refresh()
-                }
+        // The 30 s health poll only exists while the mode is .openCodex; switching modes tears the timer down
+        // so other modes cost zero wakeups. $mode emits the current value immediately, which covers launch.
+        ClickyConfiguration.shared.$mode
+            .removeDuplicates()
+            .sink { [weak self] connectionMode in
+                self?.setHealthPollingEnabled(Self.shouldPollHealth(connectionMode: connectionMode))
             }
             .store(in: &cancellables)
+    }
+
+    /// Health polling is only useful when OpenCodex is the active connection mode.
+    nonisolated static func shouldPollHealth(connectionMode: ClickyConnectionMode) -> Bool {
+        connectionMode == .openCodex
+    }
+
+    private func setHealthPollingEnabled(_ isEnabled: Bool) {
+        healthPollCancellable = nil
+        guard isEnabled else { return }
+        // Refresh right away so switching into OpenCodex mode does not show stale health for up to one poll interval.
+        Task { [weak self] in await self?.refresh() }
+        healthPollCancellable = Timer.publish(every: Self.healthPollIntervalSeconds, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                Task { [weak self] in await self?.refresh() }
+            }
     }
 
     /// Safely constructs the `/healthz` URL from the configured OpenCodex base URL using `URLComponents`.

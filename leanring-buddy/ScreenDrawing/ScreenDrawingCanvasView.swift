@@ -12,6 +12,7 @@ import CoreGraphics
 import CoreText
 import Foundation
 import QuartzCore
+import SwiftUI
 
 // MARK: - Interactive Button & Card Models
 
@@ -35,6 +36,9 @@ public final class ScreenDrawingCanvasView: NSView {
     public var onCardCloseRequested: ((ClickyDrawingCard) -> Void)?
     public var onCardZoomRequested: ((ClickyDrawingCard) -> Void)?
     public var onCardMoved: ((ClickyDrawingCard, CGPoint) -> Void)?
+    public var onCardPinRequested: ((ClickyDrawingCard) -> Void)?
+public var onCardShowBigRequested: ((ClickyDrawingCard) -> Void)?
+    public var onSaveAsVideoRequested: (() -> Void)?
     public var onTick3DRequested: ((_ stageID: String, _ ticks: [(id: String, elapsed: Double)], _ dt: Double) -> [Float]?)?
 
     // MARK: - Canvas State
@@ -47,7 +51,10 @@ public final class ScreenDrawingCanvasView: NSView {
     private let mainLayer = CALayer()
     private let highlightLayer = CALayer()
     private let wordsLayer = CALayer()
-    private let penFollowerLayer = CALayer()
+    /// Clicky's cursor while it draws: the buddy triangle hands off to this layer, which rides each pen stroke.
+    private let penFollowerLayer = CAShapeLayer()
+    /// True while the pen cursor is out (first stroke until `releasePenCursor()`), so the floating buddy hides.
+    public var onPenDrawingChanged: ((Bool) -> Void)?
     private let interactiveOverlayContainer = ClickyFlippedContainerView()
 
     private var layersByNodeID: [Int: CALayer] = [:]
@@ -59,6 +66,7 @@ public final class ScreenDrawingCanvasView: NSView {
     private var stageViewsByID: [String: ClickyThreeStageView] = [:]
     private var stage3DProjectedLabels: [String: [ClickyThreeStageView.LabelProjection]] = [:]
     private var projectedLabelLayers: [String: ClickyCoreTextLayer] = [:]
+    private var projectedLabelWidthCache: [String: (text: String, size: Double, width: CGFloat)] = [:]
 
     private var pendingButtons: [Int: ClickyActionButtonPayload] = [:]
     private var actionButtonViews: [Int: ClickyActionPillButton] = [:]
@@ -119,10 +127,22 @@ public final class ScreenDrawingCanvasView: NSView {
     }
 
     private func setupPenFollowerLayer() {
-        penFollowerLayer.bounds = CGRect(x: 0, y: 0, width: 14, height: 14)
-        penFollowerLayer.cornerRadius = 7
-        penFollowerLayer.backgroundColor = activeInkColor.cgColor
-        penFollowerLayer.shadowColor = activeInkColor.cgColor
+        // Same triangle as the floating buddy, but with its tip pointing along +x: the pen animation uses
+        // rotateAuto, which turns +x to the stroke direction, so the tip leads the way like the official pen.
+        let triangleSize: CGFloat = 14
+        let triangleHeight = triangleSize * sqrt(3.0) / 2.0
+        let tipPoint = CGPoint(x: triangleHeight, y: triangleSize / 2)
+        let trianglePath = CGMutablePath()
+        trianglePath.move(to: tipPoint)
+        trianglePath.addLine(to: CGPoint(x: 0, y: 0))
+        trianglePath.addLine(to: CGPoint(x: 0, y: triangleSize))
+        trianglePath.closeSubpath()
+        penFollowerLayer.bounds = CGRect(x: 0, y: 0, width: triangleHeight, height: triangleSize)
+        penFollowerLayer.path = trianglePath
+        // The tip, not the middle, sits on the stroke; rotating around it keeps it there.
+        penFollowerLayer.anchorPoint = CGPoint(x: 1, y: 0.5)
+        penFollowerLayer.fillColor = Self.currentCursorColor.cgColor
+        penFollowerLayer.shadowColor = Self.currentCursorColor.cgColor
         penFollowerLayer.shadowOpacity = 0.85
         penFollowerLayer.shadowRadius = 8
         penFollowerLayer.shadowOffset = .zero
@@ -133,8 +153,6 @@ public final class ScreenDrawingCanvasView: NSView {
         canvasSize = CGSize(width: max(1, size.width), height: max(1, size.height))
         if let inkHex, let color = NSColor.clickyHex(inkHex) {
             activeInkColor = color
-            penFollowerLayer.backgroundColor = color.cgColor
-            penFollowerLayer.shadowColor = color.cgColor
         }
         needsLayout = true
         layoutSubtreeIfNeeded()
@@ -165,10 +183,11 @@ public final class ScreenDrawingCanvasView: NSView {
 
     public override func hitTest(_ point: NSPoint) -> NSView? {
         let localPoint = convert(point, from: superview)
+        // NSView.hitTest expects a point in the receiver's superview, which is the container here.
+        let containerPoint = interactiveOverlayContainer.convert(localPoint, from: self)
         for subview in interactiveOverlayContainer.subviews.reversed() {
             guard !subview.isHidden, subview.alphaValue > 0.01 else { continue }
-            let subPoint = subview.convert(localPoint, from: self)
-            if let hit = subview.hitTest(subPoint) {
+            if let hit = subview.hitTest(containerPoint) {
                 return hit
             }
         }
@@ -193,6 +212,7 @@ public final class ScreenDrawingCanvasView: NSView {
         maskLayersByID.removeAll()
         maskTargetOpacityByNodeID.removeAll()
         projectedLabelLayers.removeAll()
+        projectedLabelWidthCache.removeAll()
         stage3DProjectedLabels.removeAll()
 
         for (_, stageView) in stageViewsByID {
@@ -212,8 +232,37 @@ public final class ScreenDrawingCanvasView: NSView {
         cardHandleViews.removeAll()
         visibleCards.removeAll()
 
-        penFollowerLayer.opacity = 0
+        hidePenCursor()
         CATransaction.commit()
+    }
+
+    /// The pen cursor uses the user's cursor color (Settings → Cursor), like the floating buddy.
+    private static var currentCursorColor: NSColor {
+        NSColor(DS.Colors.cursorColor(named: ClickyConfiguration.shared.cursorColorName))
+    }
+
+    /// Like the official app, the pen stays out between strokes and parks at the last stroke's end
+    /// until Clicky finishes speaking (`releasePenCursor()`), then the floating buddy takes over again.
+    private func showPenCursor() {
+        penFollowerLayer.fillColor = Self.currentCursorColor.cgColor
+        penFollowerLayer.shadowColor = Self.currentCursorColor.cgColor
+        penFollowerLayer.opacity = 1
+        onPenDrawingChanged?(true)
+    }
+
+    public func releasePenCursor() {
+        hidePenCursor()
+    }
+
+    private func hidePenCursor() {
+        penFollowerLayer.opacity = 0
+        penFollowerLayer.removeAnimation(forKey: "pen-pos")
+        onPenDrawingChanged?(false)
+    }
+
+    /// Adds an always-clickable control (e.g. the Clear pill) to the hit-testable overlay container.
+    public func addPersistentControl(_ controlView: NSView) {
+        interactiveOverlayContainer.addSubview(controlView)
     }
 
     public func applyRenderOps(_ ops: [ClickyRenderOp]) {
@@ -329,6 +378,7 @@ public final class ScreenDrawingCanvasView: NSView {
             if let existing = cardHandleViews[key] {
                 existing.card = card
                 existing.frame = handleRect
+                existing.needsLayout = true
             } else {
                 let handle = ClickyCardDragHandleView(
                     card: card,
@@ -338,6 +388,15 @@ public final class ScreenDrawingCanvasView: NSView {
                     },
                     onZoom: { [weak self] targetCard in
                         self?.onCardZoomRequested?(targetCard)
+                    },
+                    onPin: { [weak self] targetCard in
+                        self?.onCardPinRequested?(targetCard)
+                    },
+                    onSaveAsVideo: { [weak self] in
+                        self?.onSaveAsVideoRequested?()
+                    },
+                    onShowBig: { [weak self] targetCard in
+                        self?.onCardShowBigRequested?(targetCard)
                     },
                     onDragDelta: { [weak self] targetCard, deltaInView, isFinished in
                         self?.handleCardDrag(card: targetCard, deltaInView: deltaInView, finished: isFinished)
@@ -492,7 +551,7 @@ public final class ScreenDrawingCanvasView: NSView {
             let cameraJSON = node.attributes["data-camera"]
 
             if let existing = stageViewsByID[stageID] {
-                existing.frame = viewRect
+                existing.updateStageFrame(viewRect)
             } else {
                 let stageView = ClickyThreeStageView(
                     stageID: stageID,
@@ -504,7 +563,7 @@ public final class ScreenDrawingCanvasView: NSView {
                     self?.onTick3DRequested?(sID, ticks, dt)
                 }
                 stageView.onProjectedLabelsUpdated = { [weak self] projections in
-                    self?.updateProjectedLabels(stageID: stageID, projections: projections, stageFrame: viewRect)
+                    self?.updateProjectedLabels(stageID: stageID, projections: projections)
                 }
                 interactiveOverlayContainer.addSubview(stageView)
                 stageViewsByID[stageID] = stageView
@@ -557,29 +616,43 @@ public final class ScreenDrawingCanvasView: NSView {
         }
     }
 
-    private func updateProjectedLabels(stageID: String, projections: [ClickyThreeStageView.LabelProjection], stageFrame: CGRect) {
+    private func updateProjectedLabels(stageID: String, projections: [ClickyThreeStageView.LabelProjection]) {
+        // Always use the stage's current frame (cards can be dragged/resized after the closure was created).
+        guard let stageFrame = stageViewsByID[stageID]?.frame else { return }
         stage3DProjectedLabels[stageID] = projections
-        let scaleX = bounds.width / max(1, canvasSize.width)
-        let scaleY = bounds.height / max(1, canvasSize.height)
+        let scaleX = max(0.001, bounds.width / max(1, canvasSize.width))
+        let scaleY = max(0.001, bounds.height / max(1, canvasSize.height))
+        let visibleViewRect = stageFrame.intersection(bounds)
+        let visibleCanvasRect = CGRect(
+            x: visibleViewRect.origin.x / scaleX,
+            y: visibleViewRect.origin.y / scaleY,
+            width: visibleViewRect.width / scaleX,
+            height: visibleViewRect.height / scaleY
+        )
 
-        var seen = Set<String>()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         for proj in projections {
-            seen.insert(proj.id)
-            let viewX = stageFrame.origin.x + proj.point2D.x
-            let viewY = stageFrame.origin.y + proj.point2D.y
-            let canvasX = viewX / max(0.001, scaleX)
-            let canvasY = viewY / max(0.001, scaleY)
+            let canvasX = (stageFrame.origin.x + proj.point2D.x) / scaleX
+            let canvasY = (stageFrame.origin.y + proj.point2D.y) / scaleY
 
-            let anchor: String = proj.side == "left" ? "end" : proj.side == "right" ? "start" : "middle"
-            let dx: Double = proj.side == "left" ? -12 : proj.side == "right" ? 12 : 0
+            let family = "'Patrick Hand', cursive"
+            let labelWidth = projectedLabelWidth(id: proj.id, text: proj.text, family: family, size: Double(proj.size))
+            let placement = ClickyLabelPlacement.place(
+                point: CGPoint(x: canvasX, y: canvasY),
+                side: proj.side,
+                labelSize: CGSize(width: labelWidth, height: proj.size * 1.3),
+                visibleBounds: visibleCanvasRect
+            )
+            let anchor: String = placement.side == "left" ? "end" : placement.side == "right" ? "start" : "middle"
             let desc = ClickyRenderTextDescription(
-                family: "'Patrick Hand', cursive",
+                family: family,
                 size: Double(proj.size),
                 weight: 400,
                 anchor: anchor,
                 baseline: "middle",
-                x: Double(canvasX) + dx,
-                y: Double(canvasY),
+                x: Double(placement.anchorX),
+                y: Double(placement.centerY),
                 lines: [ClickyRenderTextLine(x: nil, dy: 0, text: proj.text)]
             )
 
@@ -591,6 +664,19 @@ public final class ScreenDrawingCanvasView: NSView {
                 projectedLabelLayers[proj.id] = layer
             }
         }
+        CATransaction.commit()
+    }
+
+    /// Text width only changes when the label text/size changes, so it is measured once per label.
+    private func projectedLabelWidth(id: String, text: String, family: String, size: Double) -> CGFloat {
+        if let cached = projectedLabelWidthCache[id], cached.text == text, cached.size == size {
+            return cached.width
+        }
+        let font = ClickyDrawFontRegistry.ctFont(family: family, size: CGFloat(size), weight: 400)
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
+        let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        projectedLabelWidthCache[id] = (text: text, size: size, width: width)
+        return width
     }
 
     private func applyPropOp(_ op: ClickyRenderOp) {
@@ -902,10 +988,11 @@ public final class ScreenDrawingCanvasView: NSView {
         divider.backgroundColor = NSColor.black.withAlphaComponent(0.1).cgColor
         titleBar.addSublayer(divider)
 
-        // Traffic light dots (red close + green zoom)
+        // Traffic light dots (red close + green zoom + yellow pin-to-side)
         let dotColors = [
             NSColor(srgbRed: 1.0, green: 0.45, blue: 0.42, alpha: 1),
-            NSColor(srgbRed: 0.10, green: 0.76, blue: 0.20, alpha: 1)
+            NSColor(srgbRed: 0.10, green: 0.76, blue: 0.20, alpha: 1),
+            NSColor(srgbRed: 1.0, green: 0.80, blue: 0.20, alpha: 1)
         ]
         for (idx, dotColor) in dotColors.enumerated() {
             let dot = CALayer()
@@ -1000,15 +1087,12 @@ public final class ScreenDrawingCanvasView: NSView {
             posAnim.duration = dur
             posAnim.timingFunction = timingFunction(from: anim.timing)
             posAnim.beginTime = now + beginOffset
-            posAnim.fillMode = .forwards
+            // Hold the stroke's start before it begins and its end after, so the cursor waits in place.
+            posAnim.fillMode = .both
+            posAnim.isRemovedOnCompletion = false
+            posAnim.rotationMode = .rotateAuto
             penFollowerLayer.add(posAnim, forKey: "pen-pos")
-
-            let fade = CAKeyframeAnimation(keyPath: "opacity")
-            fade.values = [0.0, 1.0, 1.0, 0.0]
-            fade.keyTimes = [0.0, 0.05, 0.92, 1.0]
-            fade.duration = dur
-            fade.beginTime = now + beginOffset
-            penFollowerLayer.add(fade, forKey: "pen-opacity")
+            showPenCursor()
         }
     }
 
@@ -1237,12 +1321,44 @@ private final class ClickyCoreTextLayer: CALayer {
     }
 
     func update(text: ClickyRenderTextDescription, fillColor: NSColor, knockoutColor: NSColor?, knockoutWidth: CGFloat) {
+        let isSameDrawing = Self.isSameDrawing(
+            old: textDesc, new: text,
+            oldFill: self.fillColor, newFill: fillColor,
+            oldKnockout: self.knockoutColor, newKnockout: knockoutColor,
+            oldKnockoutWidth: self.knockoutWidth, newKnockoutWidth: knockoutWidth
+        )
+        if isSameDrawing {
+            // Only the position changed: glyphs are drawn relative to the layer origin, so just slide the layer.
+            let deltaX = CGFloat(text.x - textDesc.x)
+            let deltaY = CGFloat(text.y - textDesc.y)
+            self.textDesc = text
+            if deltaX != 0 || deltaY != 0 {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                frame = frame.offsetBy(dx: deltaX, dy: deltaY)
+                CATransaction.commit()
+            }
+            return
+        }
         self.textDesc = text
         self.fillColor = fillColor
         self.knockoutColor = knockoutColor
         self.knockoutWidth = knockoutWidth
         recomputeGeometry()
-        setNeedsDisplay()
+    }
+
+    private static func isSameDrawing(
+        old: ClickyRenderTextDescription, new: ClickyRenderTextDescription,
+        oldFill: NSColor, newFill: NSColor,
+        oldKnockout: NSColor?, newKnockout: NSColor?,
+        oldKnockoutWidth: CGFloat, newKnockoutWidth: CGFloat
+    ) -> Bool {
+        guard old.family == new.family, old.size == new.size, old.weight == new.weight,
+              old.anchor == new.anchor, old.baseline == new.baseline,
+              old.lines.count == new.lines.count,
+              oldKnockoutWidth == newKnockoutWidth,
+              oldFill == newFill, oldKnockout == newKnockout else { return false }
+        return zip(old.lines, new.lines).allSatisfy { $0.text == $1.text && $0.dy == $1.dy && ($0.x == nil) == ($1.x == nil) }
     }
 
     private func recomputeGeometry() {
@@ -1443,6 +1559,12 @@ private final class ClickyActionPillButton: NSButton {
         let labelColor = NSColor(srgbRed: 0.08, green: 0.09, blue: 0.11, alpha: 1)
         title = labelText
         font = labelFont
+        // Show what will actually happen/be sent, since the label may differ.
+        if payload.kind == "ask", let promptText = payload.value as? String {
+            toolTip = promptText
+        } else if payload.kind == "open", let urlText = payload.value as? String {
+            toolTip = urlText
+        }
         attributedTitle = NSAttributedString(
             string: labelText,
             attributes: [
@@ -1509,10 +1631,14 @@ private final class ClickyCardDragHandleView: NSView {
     var card: ClickyDrawingCard
     private let onClose: (ClickyDrawingCard) -> Void
     private let onZoom: (ClickyDrawingCard) -> Void
+    private let onPin: (ClickyDrawingCard) -> Void
+    private let onSaveAsVideo: () -> Void
+    private let onShowBig: (ClickyDrawingCard) -> Void
     private let onDragDelta: (ClickyDrawingCard, CGPoint, Bool) -> Void
 
     private let closeButton = NSButton()
     private let zoomButton = NSButton()
+    private let pinButton = NSButton()
     private var lastDragScreenPoint: NSPoint?
     private var trackingArea: NSTrackingArea?
 
@@ -1521,11 +1647,17 @@ private final class ClickyCardDragHandleView: NSView {
         frame: CGRect,
         onClose: @escaping (ClickyDrawingCard) -> Void,
         onZoom: @escaping (ClickyDrawingCard) -> Void,
+        onPin: @escaping (ClickyDrawingCard) -> Void,
+        onSaveAsVideo: @escaping () -> Void,
+        onShowBig: @escaping (ClickyDrawingCard) -> Void,
         onDragDelta: @escaping (ClickyDrawingCard, CGPoint, Bool) -> Void
     ) {
         self.card = card
         self.onClose = onClose
         self.onZoom = onZoom
+        self.onPin = onPin
+        self.onSaveAsVideo = onSaveAsVideo
+        self.onShowBig = onShowBig
         self.onDragDelta = onDragDelta
         super.init(frame: frame)
 
@@ -1542,28 +1674,88 @@ private final class ClickyCardDragHandleView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    private func setupWindowButtons() {
-        closeButton.frame = CGRect(x: 9, y: (bounds.height - 14) / 2, width: 14, height: 14)
-        closeButton.isBordered = false
-        closeButton.title = ""
-        closeButton.wantsLayer = true
-        closeButton.layer?.cornerRadius = 7
-        closeButton.layer?.backgroundColor = NSColor.clear.cgColor
-        closeButton.target = self
-        closeButton.action = #selector(handleClose)
-        addSubview(closeButton)
+    /// Hit-button frame for the dot at `dotIndex`. The dots are drawn inside the card, so their
+    /// position and size scale with the card's chrome scale (zoomed or pinned cards).
+    private func dotHitFrame(dotIndex: Int) -> CGRect {
+        let chromeScale = CGFloat(card.windowChrome?.scale ?? 1.0)
+        let hitSize = 14 * chromeScale
+        let centerX = (16 + CGFloat(dotIndex) * 20) * chromeScale
+        return CGRect(x: centerX - hitSize / 2, y: (bounds.height - hitSize) / 2, width: hitSize, height: hitSize)
+    }
 
+    private func configureInvisibleHitButton(_ button: NSButton, dotIndex: Int, action: Selector) {
+        button.frame = dotHitFrame(dotIndex: dotIndex)
+        button.isBordered = false
+        button.title = ""
+        button.wantsLayer = true
+        button.layer?.cornerRadius = button.frame.width / 2
+        button.layer?.backgroundColor = NSColor.clear.cgColor
+        button.target = self
+        button.action = action
+        addSubview(button)
+    }
+
+    private func setupWindowButtons() {
+        configureInvisibleHitButton(closeButton, dotIndex: 0, action: #selector(handleClose))
         if !(card.windowChrome?.has3D ?? false) {
-            zoomButton.frame = CGRect(x: 29, y: (bounds.height - 14) / 2, width: 14, height: 14)
-            zoomButton.isBordered = false
-            zoomButton.title = ""
-            zoomButton.wantsLayer = true
-            zoomButton.layer?.cornerRadius = 7
-            zoomButton.layer?.backgroundColor = NSColor.clear.cgColor
-            zoomButton.target = self
-            zoomButton.action = #selector(handleZoom)
-            addSubview(zoomButton)
+            configureInvisibleHitButton(zoomButton, dotIndex: 1, action: #selector(handleZoom))
+            configureInvisibleHitButton(pinButton, dotIndex: 2, action: #selector(handlePin))
         }
+    }
+
+    /// Frames depend on the card's chrome scale, which changes on zoom/pin without the handle always being recreated.
+    override func layout() {
+        super.layout()
+        guard card.windowChrome != nil else { return }
+        closeButton.frame = dotHitFrame(dotIndex: 0)
+        zoomButton.frame = dotHitFrame(dotIndex: 1)
+        pinButton.frame = dotHitFrame(dotIndex: 2)
+        updatePinnedAccessibility()
+    }
+
+    /// A card parked at the side by the pin button (zoomed down to the pinned scale).
+    private var isPinnedToSide: Bool {
+        guard let chrome = card.windowChrome else { return false }
+        return chrome.isZoomed && abs(chrome.scale - Double(ScreenAnnotationManager.pinnedCardScale)) < 0.05
+    }
+
+    private func updatePinnedAccessibility() {
+        pinButton.toolTip = String(localized: "Pin to the side of the screen")
+        pinButton.setAccessibilityLabel(String(localized: "Pin to the side of the screen"))
+        if isPinnedToSide, let title = card.windowChrome?.title {
+            let pinnedLabel = String(localized: "Pinned card: \(title)")
+            setAccessibilityLabel(pinnedLabel)
+            toolTip = pinnedLabel
+        } else {
+            setAccessibilityLabel(nil)
+            toolTip = nil
+        }
+    }
+
+    @objc private func handlePin() {
+        onPin(card)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard card.windowChrome != nil else { return nil }
+        let menu = NSMenu()
+        if isPinnedToSide {
+            let showBigItem = NSMenuItem(title: String(localized: "Show Big"), action: #selector(handleShowBig), keyEquivalent: "")
+            showBigItem.target = self
+            menu.addItem(showBigItem)
+        }
+        let saveItem = NSMenuItem(title: "Save as Video", action: #selector(handleSaveAsVideo), keyEquivalent: "")
+        saveItem.target = self
+        menu.addItem(saveItem)
+        return menu
+    }
+
+    @objc private func handleShowBig() {
+        onShowBig(card)
+    }
+
+    @objc private func handleSaveAsVideo() {
+        onSaveAsVideo()
     }
 
     @objc private func handleClose() {
@@ -1589,7 +1781,9 @@ private final class ClickyCardDragHandleView: NSView {
 
     override func cursorUpdate(with event: NSEvent) {
         let local = convert(event.locationInWindow, from: nil)
-        if closeButton.frame.contains(local) || (!zoomButton.isHidden && zoomButton.superview != nil && zoomButton.frame.contains(local)) {
+        let isOverZoomButton = zoomButton.superview != nil && zoomButton.frame.contains(local)
+        let isOverPinButton = pinButton.superview != nil && pinButton.frame.contains(local)
+        if closeButton.frame.contains(local) || isOverZoomButton || isOverPinButton {
             NSCursor.pointingHand.set()
         } else {
             NSCursor.openHand.set()

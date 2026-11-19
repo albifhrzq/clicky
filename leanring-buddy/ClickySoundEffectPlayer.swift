@@ -224,8 +224,12 @@ public final class ClickySoundEffectPlayer {
 
     private init() {}
 
-    public func play(_ sound: ClickySoundEffect, volume: Float = 1.0) {
+    /// `isUnprompted` marks audio the user did not just ask for; those stay silent during calls.
+    /// Agent completion/attention chimes are always unprompted.
+    public func play(_ sound: ClickySoundEffect, volume: Float = 1.0, isUnprompted: Bool = false) {
         guard ClickyConfiguration.shared.soundEffectsEnabled else { return }
+        let isUnpromptedPlayback = isUnprompted || sound == .agentDone || sound == .agentNeedsYou
+        if isUnpromptedPlayback, ClickyCallPresenceDetector.shouldStayQuietForUnpromptedAudio() { return }
 
         let topologySnapshot = ClickyAudioTopologyMonitor.shared.snapshot
         let preRollDuration = topologySnapshot.requiredPreRollSilenceDuration

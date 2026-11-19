@@ -284,7 +284,7 @@ public final class ClickyWorkFolderFiles {
         }
     }
 
-    private static func renderRunsBlock(for job: ClickyJob) -> String {
+    static func renderRunsBlock(for job: ClickyJob) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
@@ -324,7 +324,7 @@ public final class ClickyWorkFolderFiles {
         return lines.joined(separator: "\n")
     }
 
-    private static func renderReportDocument(for job: ClickyJob, runsBlock: String) -> String {
+    static func renderReportDocument(for job: ClickyJob, runsBlock: String) -> String {
         let header = """
         # \(job.title)
 

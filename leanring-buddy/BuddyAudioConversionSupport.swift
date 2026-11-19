@@ -8,7 +8,8 @@
 import AVFoundation
 import Foundation
 
-final class BuddyPCM16AudioConverter {
+// nonisolated: converts on the capture queue; each instance is used from one queue at a time.
+nonisolated final class BuddyPCM16AudioConverter: @unchecked Sendable {
     private let targetAudioFormat: AVAudioFormat
     private var audioConverter: AVAudioConverter?
     private var currentInputFormatDescription: String?

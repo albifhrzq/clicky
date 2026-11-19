@@ -2088,7 +2088,8 @@
           case 'text': {
             const style = m.style || 'hand'; let fs = m.size || (style === 'title' ? 24 : style === 'body' ? 17 : style === 'caps' ? 14 : 20);
             // caps: upper case, semibold, tracked out with hair spaces (the native text shaper has no letter-spacing)
-            if (style === 'caps') m = Object.assign({}, m, { text: String(m.text).toUpperCase().split('').join('\u200A'), weight: m.weight || 600 });
+            // Only for Latin, Greek and Cyrillic: a hair space between letters breaks joined scripts apart (Arabic, Devanagari) and they have no capitals.
+            if (style === 'caps') m = Object.assign({}, m, { text: /^[\u0000-\u052F\u2000-\u2BFF]*$/.test(String(m.text)) ? String(m.text).toUpperCase().split('').join('\u200A') : String(m.text), weight: m.weight || 600 });
             // ui words (name pills, badges) are sized in screen POINTS: on a big display one canvas unit is ~2pt, so their
             // floor is 8pt, not 8 units. A unit floor there drew a 12pt pill's words a third too big, wrapped onto two lines
             // and spilling out of the pill it was measured for.

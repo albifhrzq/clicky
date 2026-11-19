@@ -48,7 +48,7 @@ final class HeyClickyWindowController: NSObject, ObservableObject, NSWindowDeleg
         }
     }
     @Published private(set) var isWindowOpen: Bool = false
-    @Published var activeSettingsSection: HomeSpaceSettingsSection = .connection
+    @Published var activeSettingsSection: HomeSpaceSettingsSection = .general
 
     // MARK: - Dependencies & Window
 
@@ -203,7 +203,7 @@ final class HeyClickyWindowController: NSObject, ObservableObject, NSWindowDeleg
         documentColumnWidth = Self.clampedDocumentWidth(proposedWidth)
     }
 
-    func openSettings(section: HomeSpaceSettingsSection = .connection) {
+    func openSettings(section: HomeSpaceSettingsSection = .general) {
         activeSettingsSection = section
         activeTab = .settings
     }
@@ -234,6 +234,8 @@ final class HeyClickyWindowController: NSObject, ObservableObject, NSWindowDeleg
             defer: false
         )
         createdWindow.title = "HeyClicky"
+        // Lets the cursor buddy's local mouse-moved monitor keep following while the pointer is over this window.
+        createdWindow.acceptsMouseMovedEvents = true
         createdWindow.titleVisibility = .hidden
         createdWindow.titlebarAppearsTransparent = true
         createdWindow.isMovableByWindowBackground = true

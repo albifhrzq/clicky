@@ -879,14 +879,12 @@ private nonisolated final class LocalAgentShimHTTPServer: @unchecked Sendable {
     // MARK: - HTTP Response Writers
 
     private func streamUpstreamResponse(upstreamRequest: URLRequest, to connection: NWConnection) {
-        let delegate = StreamingProxyDelegate(connection: connection, queue: queue)
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 300
-        config.timeoutIntervalForResource = 1800
-        let streamSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-        delegate.retainedSession = streamSession
-        let task = streamSession.dataTask(with: upstreamRequest)
-        task.resume()
+        StreamingProxyDelegate.start(
+            upstreamRequest: upstreamRequest,
+            connection: connection,
+            queue: queue,
+            retryNumber: 0
+        )
     }
 
     private func sendJSONResponse(on connection: NWConnection, statusCode: Int, payload: [String: Any]) {
@@ -908,11 +906,45 @@ private nonisolated final class StreamingProxyDelegate: NSObject, URLSessionData
     private let stateLock = NSLock()
     private var hasSentHeaders = false
     private var hasClosed = false
+    private let upstreamRequest: URLRequest
+    private let retryNumber: Int
+    /// Set when an upstream outage response was cancelled and a retry must run once the task completes.
+    private var pendingRetryDelaySeconds: TimeInterval?
     var retainedSession: URLSession?
 
-    init(connection: NWConnection, queue: DispatchQueue) {
+    init(connection: NWConnection, queue: DispatchQueue, upstreamRequest: URLRequest, retryNumber: Int) {
         self.connection = connection
         self.queue = queue
+        self.upstreamRequest = upstreamRequest
+        self.retryNumber = retryNumber
+    }
+
+    /// Starts one upstream attempt. On a 5xx/529 the attempt is dropped before any byte reaches the
+    /// client and a new one is scheduled with backoff, so the runner never sees the outage.
+    static func start(
+        upstreamRequest: URLRequest,
+        connection: NWConnection,
+        queue: DispatchQueue,
+        retryNumber: Int
+    ) {
+        let delegate = StreamingProxyDelegate(
+            connection: connection,
+            queue: queue,
+            upstreamRequest: upstreamRequest,
+            retryNumber: retryNumber
+        )
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 1800
+        let streamSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        delegate.retainedSession = streamSession
+        streamSession.dataTask(with: upstreamRequest).resume()
+    }
+
+    private static func publishRetryStatus(_ status: ClickyModelRetryStatus?) {
+        Task { @MainActor in
+            ClickyJobStore.shared.setModelRetryStatus(status)
+        }
     }
 
     func urlSession(
@@ -923,6 +955,23 @@ private nonisolated final class StreamingProxyDelegate: NSObject, URLSessionData
     ) {
         let httpResponse = response as? HTTPURLResponse
         let statusCode = httpResponse?.statusCode ?? 200
+
+        if ClickyModelRetryPolicy.shouldRetry(statusCode: statusCode),
+           let retryDelaySeconds = ClickyModelRetryPolicy.delaySeconds(forRetry: retryNumber + 1) {
+            stateLock.lock()
+            pendingRetryDelaySeconds = retryDelaySeconds
+            stateLock.unlock()
+            Self.publishRetryStatus(
+                ClickyModelRetryStatus(attempt: retryNumber + 1, maximum: ClickyModelRetryPolicy.maximumRetryCount)
+            )
+            completionHandler(.cancel)
+            return
+        }
+        if retryNumber > 0 {
+            // Recovered, or retries ran out and the failure is passed through: stop showing "reconnecting".
+            Self.publishRetryStatus(nil)
+        }
+
         let reason = HTTPURLResponse.localizedString(forStatusCode: statusCode)
         let contentType = httpResponse?.value(forHTTPHeaderField: "Content-Type") ?? "application/json"
 
@@ -960,6 +1009,41 @@ private nonisolated final class StreamingProxyDelegate: NSObject, URLSessionData
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        stateLock.lock()
+        let retryDelaySeconds = pendingRetryDelaySeconds
+        stateLock.unlock()
+
+        if let retryDelaySeconds {
+            let nextRetryNumber = retryNumber + 1
+            let request = upstreamRequest
+            let clientConnection = connection
+            let workQueue = queue
+            retainedSession?.finishTasksAndInvalidate()
+            retainedSession = nil
+            workQueue.asyncAfter(deadline: .now() + retryDelaySeconds) {
+                // The client may have gone away during the backoff; don't start an upstream call nobody reads.
+                switch clientConnection.state {
+                case .cancelled, .failed:
+                    Self.publishRetryStatus(nil)
+                    return
+                default:
+                    break
+                }
+                Self.start(
+                    upstreamRequest: request,
+                    connection: clientConnection,
+                    queue: workQueue,
+                    retryNumber: nextRetryNumber
+                )
+            }
+            return
+        }
+
+        if retryNumber > 0 {
+            // Final attempt finished (success, error or cancel): clear the "reconnecting" status.
+            Self.publishRetryStatus(nil)
+        }
+
         stateLock.lock()
         let sentHeaders = hasSentHeaders
         let alreadyClosed = hasClosed

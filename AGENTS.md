@@ -46,17 +46,30 @@ Worker vars: `ELEVENLABS_VOICE_ID`
 
 **Shared URLSession for AssemblyAI**: A single long-lived `URLSession` is shared across all AssemblyAI streaming sessions (owned by the provider, not the session). Creating and invalidating a URLSession per session corrupts the OS connection pool and causes "Socket is not connected" errors after a few rapid reconnections.
 
-**Transient Cursor Mode**: When "Show Clicky" is off, pressing the hotkey fades in the cursor overlay for the duration of the interaction (recording → response → TTS → optional pointing), then fades it out automatically after 1 second of inactivity.
+**Transient Cursor Mode**: When "Show Clicky" is off, pressing the hotkey fades in the cursor overlay for the duration of the interaction (recording → response → TTS → optional pointing), then fades it out automatically after 1 second of inactivity. The overlay does not auto-hide while the onboarding tour runs.
+
+**Onboarding Tour**: First-run onboarding is an interactive tour (talk → point → text mode → dictation → drive → notch → done) driven by `ClickyOnboardingTourController` in `Onboarding/ClickyOnboardingTour.swift`. It replaces the old onboarding video. The tour is a pure step machine fed by shortcut slot events, voice state, and notch hover. Each step's line appears in the cursor prompt bubble and is spoken via TTS. Esc skips the tour (ignored during the drive step; if Clicky is busy answering, the first Esc only interrupts that work). The meeting, morning and Spotify notch cards are hidden while the tour runs.
+
+**Companion Capabilities**: Every companion channel (typed chat, push-to-talk voice, realtime voice) learns its abilities from one place, `Companion/ClickyCompanionCapabilities.swift`, which joins `ClickyDrawingPromptReference` (the full JS drawing language; the drawing canvas uses the cursor screen's screenshot pixels, so model coordinates map 1:1) and `ClickyHandoffPromptReference`. Text and voice replies hand work off with `[AGENT:<slug|none>:<task>]` (background job) or `[DRIVE:<step>]` (Clicky drives the Mac); tags are stripped before display/TTS. Jobs start after a notch "Start a background job?" card unless Settings → Agents → "Ask before starting jobs" is off, and even then only when the user's own words asked for work (drawing buttons always ask). Drive always shows the consent card and runs `ComputerUse/ClickyDriveStepExecutor.swift` (screenshot → one JSON action → ClickyAppDriver; 25 actions / 3 min, stops if another app comes to the front, never types into password fields, blocks quit/delete/Spotlight combos). Realtime voice has no tags: it calls the tools `use_screen` (runs the push-to-talk screen pipeline) and `start_background_job`. The voice and text base prompts live in `Companion/ClickyCompanionSystemPrompts.swift` (short spoken sentences, `[POINT]` only when pointing helps); background jobs get `Companion/ClickyJobInstructions.swift` (approval/confirmation rules plus the `<SUMMARY>`/`<ANSWER>`/`<ARTIFACTS>`/`<NEXT_ACTIONS>`/`<LEARNED>` final-message tags read by `AgentCompletionXMLParser`; the chat shows the prose outside the tags). These are our own wording: the bundled `ClickyModelInstructions.md` is HeyClicky's file and is not loaded.
+
+**Notch Island**: Each display gets one fixed, transparent notch panel sized by `NotchScreenGeometry.canvasRect` (largest panel `NotchPanelMetrics.maximumExpandedSize` + shadow margins); the window never resizes. `NotchRootView` draws ONE black shape that morphs (single spring) between resting pill, activity pill and expanded panel, and the pill is always black (never the cursor color). Mouse pass-through uses `NotchScreenGeometry.interactiveRect`, so the transparent canvas clicks through to the menu bar. After a collapse the pointer must leave the pill before hover reopens it.
+
+**Settings Layout**: Settings mirrors HeyClicky 1.1.5: a grouped sidebar (General, Language · HEYCLICKY: Voice, Microphone, Dictation, Shortcuts, Cursor · WORK: Integrations, Agents · ADVANCED: Connection & AI, Browser & Security, Routines, Skills, Memory) with a version footer, then a page title + subtitle and uppercase section headers above rounded cards (`Settings/ClickySettingsChrome.swift`). `HomeSpaceSettingsSection.sidebarGroups` is the single source of the order. No Account, Billing, Upgrade or Invite pages. Like 1.1.5, Home, Chat and Settings open inside the notch panel (top bar: Home/Chat icon capsule + gear; Home/Chat 516×400, Settings 800×648 hosting `HomeSpaceSettingsPage`). Settings controls use `ClickySettingsPalette`, `ClickyGlossyToggleStyle` and `ClickyGlossyPillButtonStyle` from `ClickySettingsChrome.swift`.
+
+**Job Announcements**: Settings → Agents → Announcements. `Clickys/ClickyJobAnnouncementPolicy.swift` turns `ClickyJobStore.jobs` snapshots into started / finished / needs-you events (failed and stopped stay silent; the first snapshot after launch is silent). `CompanionManager` speaks them unprompted (quiet during calls), queues them while Clicky is mid-conversation, and shows finished/needs-you summaries in the cursor bubble for 6 s. Defaults keys match HeyClicky: `ClickyAgentVoiceAnnouncementsEnabled`, `ClickyAgentCursorTextAnnouncementsEnabled`.
+
+**Permissions & Entitlements**: Calendar access (`NSCalendarsFullAccessUsageDescription` in Info.plist + `com.apple.security.personal-information.calendars`) powers the meeting countdown. Apple Events (`NSAppleEventsUsageDescription` + `com.apple.security.automation.apple-events`) powers agent-driven app control such as Spotify.
 
 ## Key Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `leanring_buddyApp.swift` | ~89 | Menu bar app entry point. Uses `@NSApplicationDelegateAdaptor` with `CompanionAppDelegate` which creates `MenuBarPanelManager` and starts `CompanionManager`. No main window — the app lives entirely in the status bar. |
-| `CompanionManager.swift` | ~1026 | Central state machine. Owns dictation, shortcut monitoring, screen capture, Claude API, ElevenLabs TTS, and overlay management. Tracks voice state (idle/listening/processing/responding), conversation history, model selection, and cursor visibility. Coordinates the full push-to-talk → screenshot → Claude → TTS → pointing pipeline. |
+| `leanring_buddyApp.swift` | ~333 | Menu bar app entry point. Uses `@NSApplicationDelegateAdaptor` with `CompanionAppDelegate` which creates `MenuBarPanelManager` and starts `CompanionManager`, plus the morning suggestion, upcoming meeting, and Spotify tip monitors. No main window — the app lives entirely in the status bar. |
+| `Onboarding/ClickyOnboardingTour.swift` | ~321 | Interactive first-run tour (talk → point → text mode → dictation → drive → notch → done) replacing the old onboarding video. Pure step machine plus `ClickyOnboardingTourController`, driven by shortcut slot events, voice state, and notch hover. Step lines show in the cursor prompt bubble and are spoken via TTS. Esc skips. |
+| `CompanionManager.swift` | ~2440 | Central state machine. Owns `onboardingTourController`, dictation, shortcut monitoring, screen capture, Claude API, ElevenLabs TTS, and overlay management. No email capture and no onboarding video. Tracks voice state (idle/listening/processing/responding), conversation history, model selection, and cursor visibility. Coordinates the full push-to-talk → screenshot → Claude → TTS → pointing pipeline. |
 | `MenuBarPanelManager.swift` | ~243 | NSStatusItem + custom NSPanel lifecycle. Creates the menu bar icon, manages the floating companion panel (show/hide/position), installs click-outside-to-dismiss monitor. |
-| `CompanionPanelView.swift` | ~761 | SwiftUI panel content for the menu bar dropdown. Shows companion status, push-to-talk instructions, model picker (Sonnet/Opus), permissions UI, DM feedback button, and quit button. Dark aesthetic using `DS` design system. |
-| `OverlayWindow.swift` | ~881 | Full-screen transparent overlay hosting the blue cursor, response text, waveform, and spinner. Handles cursor animation, element pointing with bezier arcs, multi-monitor coordinate mapping, and fade-out transitions. |
+| `CompanionPanelView.swift` | ~847 | SwiftUI panel content for the menu bar dropdown. Shows companion status, push-to-talk instructions, model picker (Sonnet/Opus), permissions UI, a Start button right after permissions (no email), a "Replay Tour" footer button, DM feedback button, and quit button. Dark aesthetic using `DS` design system. |
+| `OverlayWindow.swift` | ~849 | Full-screen transparent overlay hosting the blue cursor, response text, waveform, and spinner. No video player; the cursor bubble carries the onboarding tour step lines. Handles cursor animation, element pointing with bezier arcs, multi-monitor coordinate mapping, and fade-out transitions. |
 | `CompanionResponseOverlay.swift` | ~217 | SwiftUI view for the response text bubble and waveform displayed next to the cursor in the overlay. |
 | `CompanionScreenCaptureUtility.swift` | ~132 | Multi-monitor screenshot capture using ScreenCaptureKit. Returns labeled image data for each connected display. |
 | `BuddyDictationManager.swift` | ~866 | Push-to-talk voice pipeline. Handles microphone capture via `AVAudioEngine`, provider-aware permission checks, keyboard/button dictation sessions, transcript finalization, shortcut parsing, contextual keyterms, and live audio-level reporting for waveform feedback. |
@@ -71,7 +84,34 @@ Worker vars: `ELEVENLABS_VOICE_ID`
 | `ElevenLabsTTSClient.swift` | ~81 | ElevenLabs TTS client. Sends text to the Worker proxy, plays back audio via `AVAudioPlayer`. Exposes `isPlaying` for transient cursor scheduling. |
 | `ElementLocationDetector.swift` | ~335 | Detects UI element locations in screenshots for cursor pointing. |
 | `DesignSystem.swift` | ~880 | Design system tokens — colors, corner radii, shared styles. All UI references `DS.Colors`, `DS.CornerRadius`, etc. |
-| `ClickyAnalytics.swift` | ~121 | PostHog analytics integration for usage tracking. |
+| `ClickyAnalytics.swift` | ~480 | PostHog analytics integration for usage tracking. Includes onboarding tour step, completed, and skipped events. |
+| `ScreenDrawing/ClickyDrawingVideoRecorder.swift` | ~220 | "Save as Video" for drawings. Records via `SCStream` and writes H.264 with `AVAssetWriter` into `~/Downloads`. |
+| `Companion/ClickyCompanionCapabilities.swift` | ~32 | Shared "what you can do" prompt sections per channel (text / voice / realtime). |
+| `Companion/ClickyCompanionSystemPrompts.swift` | ~56 | Voice (push-to-talk) and typed-text base system prompts plus the `[POINT]` pointing rules. |
+| `Companion/ClickyJobInstructions.swift` | ~53 | Background job rules and the final-message tag contract prepended to every job's instructions. |
+| `Clickys/ClickyJobAnnouncementPolicy.swift` | ~100 | Pure policy for job start/finish/needs-you announcements (spoken line and cursor bubble text). |
+| `Notch/ClickyChatComposerBar.swift` | ~160 | Shared chat composer for the notch and the window: hold-to-talk mic, + attach, "Ask HeyClicky…" field, background-job bolt, read-aloud speaker toggle, send/stop, expand to window. |
+| `Settings/ClickySettingsChrome.swift` | ~125 | Settings page header, section card (header above the card), toggle row, status badge, app name/version for the sidebar footer. |
+| `Settings/ClickyAgentsSettingsView.swift` | ~90 | Settings → Agents: agent folder, autonomy toggles, announcements, what agents can reach. |
+| `Settings/ClickyMacPermissionsCard.swift` | ~158 | macOS permission rows (shown on the Agents page as "What agents can reach"). |
+| `Companion/ClickyDrawingPromptReference.swift` | ~74 | Teaches the model the drawing language (shapes, ring/point/highlight, cards, photos, 3D, graphs, buttons, guided clicks) in screenshot-pixel coordinates. |
+| `Companion/ClickyCompanionHandoff.swift` | ~272 | `[AGENT]`/`[DRIVE]` tag parser, handoff policy (ask vs auto), confirmation flow and activity ledger lines. |
+| `ComputerUse/ClickyDriveStepExecutor.swift` | ~418 | Drive mode vision loop with safety limits; installed as `ClickyTakeOverController.stepExecutor` at app start. |
+| `ScreenDrawing/ScreenDrawingClearPolicy.swift` | ~20 | Pure rule for when an app/Space change may wipe a drawing (never while streaming, during a voice turn, or within 4 s of finishing). |
+| `ScreenDrawing/ClickyRecentDrawings.swift` | ~136 | Home → Drawings library: every finished drawing's full JS program (JSON in Application Support, max 30) plus `ClickyDrawingPlayer` replay (full screen, window, white board). Chat messages link to it via `ClickyChatMessage.drawingID`. |
+| `ScreenDrawing/ClickyDrawingWindowViewer.swift` | ~143 | Replays a stored drawing inside its own resizable window with a separate engine instance. Space pauses. |
+| `ScreenDrawing/ClickyDrawingWhiteboardPanel.swift` | ~96 | Opaque white board panel behind a full-screen replay. Esc closes, Space pauses. |
+| `ScreenDrawing/ClickyDrawingSaveOfferView.swift` | ~192 | Save-offer panel after a drawing finishes, with the recording indicator ("Recording m:ss / m:ss", "Saving the video…", "Show the video in Finder"). |
+| `HomeSpace/HomeSuggestionsAndDrawingsSections.swift` | ~233 | Home sections: suggestions with paging, reason, Yes / No thanks (decline reasons feed the next generation), and the Drawings list. |
+| `Skills/ClickySkillStore.swift` | ~455 | Local skills: one Markdown file per skill in Application Support, max 3 active, injected into voice/text/agent prompts (escaped, size-capped). Agent-created skills arrive as unreviewed drafts and must be opened before activation. |
+| `Skills/ClickySkillsSettingsView.swift` | ~307 | Settings → Skills: create (background agent job), import .md, edit, remove, activate. |
+| `ScreenCapture/ClickyRegionCapture.swift` | ~334 | Region capture: drag a box, then Send with text / Send with voice / Don't send yet. Queued regions (max 4, 10-min TTL) ride along with the next question. Triggered from the menu bar or the optional `regionCapture` shortcut. |
+| `ScreenCapture/ClickyRegionOverlayWindow.swift` | ~230 | Per-screen drag overlay and action bar for region capture. |
+| `HomeSpace/ClickyMorningSuggestions.swift` | ~113 | Once-a-day morning greeting plus 3 LLM-generated agent task suggestions, shown as a notch card. Gated by the "Suggest agent tasks" toggle. |
+| `Notch/ClickyUpcomingMeetingMonitor.swift` | ~118 | EventKit monitor. Shows a notch countdown and Join button 5 minutes before a calendar event. Gated by the "Upcoming meetings" toggle (off by default). |
+| `Notch/ClickySpotifyTipMonitor.swift` | ~45 | One-time notch tip when Spotify is first activated. "Try it" starts an agent job. |
+| `Audio/ClickyMicrophoneSelection.swift` | ~230 | Settings → Microphone selection. Enumerates CoreAudio input devices and pins every capture engine (dictation, wake word, realtime, mic test) to the chosen mic via `kAudioOutputUnitProperty_CurrentDevice`. Default (never chosen) is the built-in mic so Bluetooth headsets stay out of the HFP call profile. Also `ClickyMicrophoneTestController`. |
+| `Settings/ClickyMicrophoneSettingsView.swift` | ~125 | Settings → Microphone page: System Default + device radio list and Test microphone level bars. |
 | `WindowPositionManager.swift` | ~262 | Window placement logic, Screen Recording permission flow, and accessibility permission helpers. |
 | `AppBundleConfiguration.swift` | ~28 | Runtime configuration reader for keys stored in the app bundle Info.plist. |
 | `worker/src/index.ts` | ~142 | Cloudflare Worker proxy. Three routes: `/chat` (Claude), `/tts` (ElevenLabs), `/transcribe-token` (AssemblyAI temp token). |
@@ -89,6 +129,8 @@ open leanring-buddy.xcodeproj
 ```
 
 **Do NOT run `xcodebuild` from the terminal** — it invalidates TCC (Transparency, Consent, and Control) permissions and the app will need to re-request screen recording, accessibility, etc.
+
+**Unit tests**: The test target is `leanring-buddyTests` (Swift Testing, `@testable import Clicky`). Run it with Cmd+U in Xcode, never `xcodebuild` from the terminal. The app target uses `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` but the test target does not, so test structs that call app code must be `@MainActor` or call `nonisolated` helpers.
 
 ## Cloudflare Worker
 
@@ -144,6 +186,12 @@ IMPORTANT: Follow these naming rules strictly. Clarity is the top priority.
 - Do not try to fix the known non-blocking warnings (Swift 6 concurrency, deprecated onChange)
 - Do not rename the project directory or scheme (the "leanring" typo is intentional/legacy)
 - Do not run `xcodebuild` from the terminal — it invalidates TCC permissions
+
+### Localization
+
+- New UI strings must be localizable: SwiftUI `Text("...")` literals are `LocalizedStringKey` automatically; for `String` values use `String(localized:)`.
+- Add the `id` (Indonesian) translation for every new string in `leanring-buddy/Localizable.xcstrings`. Only `en` and `id` are supported.
+- The user picks the language in Settings > General > Language (`ClickyConfiguration.appLanguage`); it applies via the `AppleLanguages` override after relaunch.
 
 ## Git Workflow
 

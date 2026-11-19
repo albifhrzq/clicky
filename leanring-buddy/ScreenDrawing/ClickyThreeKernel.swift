@@ -358,7 +358,20 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
 
     private var userYawOffset: Double = 0
     private var userPitchOffset: Double = 0
+    private var userZoomFactor: Double = 1.0
     private var lastDragPoint: NSPoint?
+
+    // Render-on-demand bookkeeping: the stage renders continuously only while something moves.
+    private let stageAppearedAt: CFTimeInterval = CACurrentMediaTime()
+    private var hasRunningMotions = false
+    private var interactionUntil: CFTimeInterval = 0
+    private var animationUntil: CFTimeInterval = 0
+    private var labelsNeedProjection = true
+    private var lastSentLabelPoints: [ClickyThreeLabelPoint]?
+    private var lastLabelSendTime: CFTimeInterval = 0
+    private var isRenderingContinuously = true
+    /// Read from the SceneKit render thread; a stale Bool only costs one extra or one skipped hop.
+    private nonisolated(unsafe) var needsFrameStepFlag = true
 
     private struct Label3DRecord {
         let id: String
@@ -384,7 +397,8 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
         scnView.backgroundColor = .clear
         scnView.wantsLayer = true
         scnView.layer?.backgroundColor = NSColor.clear.cgColor
-        scnView.antialiasingMode = .multisampling4X
+        scnView.antialiasingMode = .multisampling2X
+        scnView.preferredFramesPerSecond = 30
         scnView.isPlaying = true
         scnView.loops = true
         scnView.allowsCameraControl = false
@@ -397,6 +411,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
             applyCameraConfig(jsonString: cameraJSON)
         }
         updateCameraRig(animated: false)
+        refreshRenderingMode()
     }
 
     @available(*, unavailable)
@@ -496,6 +511,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
             node.opacity = 1
             node.scale = SCNVector3(scaleVal, scaleVal, scaleVal)
             SCNTransaction.commit()
+            keepRenderingForAnimation(seconds: 0.5)
         }
 
         let posVec = SCNVector3(
@@ -513,6 +529,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
         node.scale = SCNVector3(scaleVal, scaleVal, scaleVal)
         partBaseTransforms[partID] = (posVec, rotVec, CGFloat(scaleVal))
 
+        markSceneChanged()
         if kind == "group" {
             return
         }
@@ -542,12 +559,14 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
                 targetNode.geometry = geometry
                 self.recordSamples(mesh.samples, offset: capturedPos)
                 self.refitCameraDistance()
+                self.markSceneChanged()
             } catch {
                 // Fallback primitive if a custom recipe fails
                 guard let targetNode = self.partNodesByID[capturedPartID] else { return }
                 let fallback = SCNBox(width: 0.4, height: 0.4, length: 0.4, chamferRadius: 0.04)
                 fallback.materials = [scnMat]
                 targetNode.geometry = fallback
+                self.markSceneChanged()
             }
         }
     }
@@ -555,6 +574,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
     public func addTick(tickID: String) {
         if !activeTicks.contains(where: { $0.id == tickID }) {
             activeTicks.append((id: tickID, startTime: CACurrentMediaTime()))
+            refreshRenderingMode()
         }
     }
 
@@ -574,6 +594,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
                 SCNAction.rotate(by: .pi * 2, around: axis, duration: max(0.2, period))
             )
             node.runAction(action, forKey: "spin")
+            hasRunningMotions = true
 
         case "bob":
             let axis = vector3(op["axis"], default: SCNVector3(0, 1, 0))
@@ -586,6 +607,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
             let down = SCNAction.move(by: neg, duration: half)
             down.timingMode = .easeInEaseOut
             node.runAction(SCNAction.repeatForever(SCNAction.sequence([up, down])), forKey: "bob")
+            hasRunningMotions = true
 
         case "pulse":
             let amount = (op["amount"] as? NSNumber)?.doubleValue ?? 0.08
@@ -596,6 +618,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
             let shrink = SCNAction.scale(to: baseScale, duration: half)
             shrink.timingMode = .easeInEaseOut
             node.runAction(SCNAction.repeatForever(SCNAction.sequence([grow, shrink])), forKey: "pulse")
+            hasRunningMotions = true
 
         case "orbit":
             let axis = vector3(op["axis"], default: SCNVector3(0, 1, 0))
@@ -609,6 +632,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
                 targetNode.position = SCNVector3(center.x + rotated.x, center.y + rotated.y, center.z + rotated.z)
             }
             node.runAction(SCNAction.repeatForever(action), forKey: "orbit")
+            hasRunningMotions = true
 
         case "path":
             guard let rawPoints = op["points"] as? [[NSNumber]], rawPoints.count >= 2 else { return }
@@ -626,6 +650,11 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
             }
             let seq = SCNAction.sequence(actions)
             node.runAction(once ? seq : SCNAction.repeatForever(seq), forKey: "path")
+            if once {
+                keepRenderingForAnimation(seconds: period + 0.5)
+            } else {
+                hasRunningMotions = true
+            }
 
         case "tween":
             SCNTransaction.begin()
@@ -642,6 +671,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
                 )
             }
             SCNTransaction.commit()
+            keepRenderingForAnimation(seconds: max(0.05, period) + 0.2)
 
         case "set":
             if let show = op["show"] as? Bool {
@@ -663,6 +693,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
         default:
             break
         }
+        markSceneChanged()
     }
 
     public func applyCameraConfig(jsonString: String) {
@@ -681,6 +712,7 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
             cameraTarget = SCNVector3(targetArr[0].doubleValue, targetArr[1].doubleValue, targetArr[2].doubleValue)
         }
         updateCameraRig(animated: true)
+        refreshRenderingMode()
     }
 
     public func addLabel(labelJSON: String, fallbackColor: NSColor) {
@@ -707,27 +739,92 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
         )
         labels3D.removeAll { $0.id == id }
         labels3D.append(record)
+        lastSentLabelPoints = nil
+        markSceneChanged()
+    }
+
+    /// Moves/resizes the stage; label projections must be re-sent because their origin changed.
+    public func updateStageFrame(_ newFrame: NSRect) {
+        guard newFrame != frame else { return }
+        frame = newFrame
+        lastSentLabelPoints = nil
+        markSceneChanged()
     }
 
     public func removePart(id: String) {
         if let node = partNodesByID.removeValue(forKey: id) {
             node.removeFromParentNode()
         }
+        markSceneChanged()
     }
 
     // MARK: - SCNSceneRendererDelegate
 
     nonisolated public func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+        // Skip the main-actor hop entirely when nothing needs a per-frame step.
+        guard needsFrameStepFlag else { return }
         Task { @MainActor [weak self] in
             self?.stepFrame(at: time)
         }
     }
 
+    // MARK: - Render-on-demand
+
+    private var renderDemand: ClickyThreeRenderDemand {
+        let now = CACurrentMediaTime()
+        return ClickyThreeRenderDemand(
+            hasActiveTicks: !activeTicks.isEmpty,
+            hasRunningMotions: hasRunningMotions,
+            isAutoSpinning: ClickyThreeRenderDemand.isAutoSpinActive(
+                spinRate: autoSpinRateRadPerSec,
+                secondsSinceAppeared: now - stageAppearedAt,
+                isDragging: lastDragPoint != nil
+            ),
+            isUserInteracting: lastDragPoint != nil || now < interactionUntil,
+            isAnimating: now < animationUntil
+        )
+    }
+
+    /// Starts/stops continuous rendering to match what is moving right now.
+    private func refreshRenderingMode() {
+        let shouldRenderContinuously = renderDemand.needsContinuousRendering
+        if shouldRenderContinuously != isRenderingContinuously {
+            isRenderingContinuously = shouldRenderContinuously
+            scnView.isPlaying = shouldRenderContinuously
+            // One last pass so labels and the final pose settle after motion stops.
+            if !shouldRenderContinuously { markSceneChanged() }
+        }
+        needsFrameStepFlag = shouldRenderContinuously || labelsNeedProjection
+    }
+
+    private func keepRenderingForAnimation(seconds: CFTimeInterval) {
+        animationUntil = max(animationUntil, CACurrentMediaTime() + seconds)
+        refreshRenderingMode()
+    }
+
+    private func markUserInteraction() {
+        interactionUntil = CACurrentMediaTime() + 0.5
+        refreshRenderingMode()
+    }
+
+    /// Something changed in the scene: redraw once (even when not playing) and re-project labels.
+    private func markSceneChanged() {
+        labelsNeedProjection = true
+        needsFrameStepFlag = true
+        scnView.needsDisplay = true
+    }
+
     private func stepFrame(at now: CFTimeInterval) {
         let dt = min(0.05, max(1.0 / 120.0, now - lastFrameTime))
         lastFrameTime = now
+        let wallClock = CACurrentMediaTime()
 
-        if autoSpinRateRadPerSec != 0 && lastDragPoint == nil {
+        let isSpinning = ClickyThreeRenderDemand.isAutoSpinActive(
+            spinRate: autoSpinRateRadPerSec,
+            secondsSinceAppeared: wallClock - stageAppearedAt,
+            isDragging: lastDragPoint != nil
+        )
+        if isSpinning {
             cameraTurnDeg += autoSpinRateRadPerSec * dt * 180.0 / .pi
             cameraOrbitNode.eulerAngles.y = CGFloat((cameraTurnDeg + userYawOffset) * .pi / 180.0)
         }
@@ -739,32 +836,47 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
             }
         }
 
-        if !labels3D.isEmpty, let onProjectedLabelsUpdated {
-            var projected: [LabelProjection] = []
-            projected.reserveCapacity(labels3D.count)
-            for lbl in labels3D {
-                let worldPos: SCNVector3
-                if let followID = lbl.followPartID, let node = partNodesByID[followID] {
-                    worldPos = node.worldPosition
-                } else if let pt = lbl.point {
-                    worldPos = pt
-                } else {
-                    continue
-                }
-                let proj = scnView.projectPoint(worldPos)
-                // projectPoint returns y bottom-up in SCNView coordinates; convert to view top-down
-                let pt2D = CGPoint(x: proj.x, y: bounds.height - proj.y)
-                projected.append(LabelProjection(
-                    id: lbl.id,
-                    text: lbl.text,
-                    point2D: pt2D,
-                    side: lbl.side,
-                    size: lbl.size,
-                    color: lbl.color
-                ))
+        projectLabelsIfNeeded(wallClock: wallClock)
+        labelsNeedProjection = false
+        refreshRenderingMode()
+    }
+
+    private func projectLabelsIfNeeded(wallClock: CFTimeInterval) {
+        guard !labels3D.isEmpty, let onProjectedLabelsUpdated else { return }
+        // At most ~30 fps while rendering continuously, unless the scene itself changed.
+        if isRenderingContinuously, !labelsNeedProjection,
+           wallClock - lastLabelSendTime < ClickyThreeLabelProjectionDelta.minimumSendInterval { return }
+
+        var projected: [LabelProjection] = []
+        projected.reserveCapacity(labels3D.count)
+        for lbl in labels3D {
+            let worldPos: SCNVector3
+            if let followID = lbl.followPartID, let node = partNodesByID[followID] {
+                worldPos = node.worldPosition
+            } else if let pt = lbl.point {
+                worldPos = pt
+            } else {
+                continue
             }
-            onProjectedLabelsUpdated(projected)
+            let proj = scnView.projectPoint(worldPos)
+            // projectPoint returns y bottom-up in SCNView coordinates; convert to view top-down
+            let pt2D = CGPoint(x: proj.x, y: bounds.height - proj.y)
+            projected.append(LabelProjection(
+                id: lbl.id,
+                text: lbl.text,
+                point2D: pt2D,
+                side: lbl.side,
+                size: lbl.size,
+                color: lbl.color
+            ))
         }
+        let projectedPoints = projected.map { ClickyThreeLabelPoint(id: $0.id, point: $0.point2D) }
+        guard ClickyThreeLabelProjectionDelta.hasMeaningfulChange(
+            previous: lastSentLabelPoints, current: projectedPoints
+        ) else { return }
+        lastSentLabelPoints = projectedPoints
+        lastLabelSendTime = wallClock
+        onProjectedLabelsUpdated(projected)
     }
 
     private func applyTickPoses(_ flat: [Float]) {
@@ -808,10 +920,19 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
         }
     }
 
-    // MARK: - Interactive Orbit Drag
+    // MARK: - Interactive Orbit / Zoom
+
+    /// The SceneKit child must not swallow events: the stage itself handles drag, scroll and pinch.
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        frame.contains(point) && !isHidden ? self : nil
+    }
+
+    /// The overlay panel is non-key, so the first click must already start an orbit.
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     public override func mouseDown(with event: NSEvent) {
         lastDragPoint = convert(event.locationInWindow, from: nil)
+        markUserInteraction()
     }
 
     public override func mouseDragged(with event: NSEvent) {
@@ -824,10 +945,31 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
         userYawOffset -= dx * 0.45
         userPitchOffset = max(-75, min(75, userPitchOffset + dy * 0.45))
         updateCameraRig(animated: false)
+        markUserInteraction()
     }
 
     public override func mouseUp(with event: NSEvent) {
         lastDragPoint = nil
+        interactionUntil = CACurrentMediaTime() + 0.3
+        refreshRenderingMode()
+    }
+
+    public override func scrollWheel(with event: NSEvent) {
+        let factor = ClickyThreeZoom.scrollFactor(
+            deltaY: Double(event.scrollingDeltaY),
+            isPrecise: event.hasPreciseScrollingDeltas
+        )
+        applyUserZoom(factor: factor)
+    }
+
+    public override func magnify(with event: NSEvent) {
+        applyUserZoom(factor: ClickyThreeZoom.magnifyFactor(magnification: Double(event.magnification)))
+    }
+
+    private func applyUserZoom(factor: Double) {
+        userZoomFactor = ClickyThreeZoom.clamped(userZoomFactor * factor)
+        updateCameraRig(animated: false)
+        markUserInteraction()
     }
 
     // MARK: - Helpers
@@ -838,10 +980,12 @@ public final class ClickyThreeStageView: NSView, SCNSceneRendererDelegate {
             self.cameraOrbitNode.eulerAngles.y = CGFloat((self.cameraTurnDeg + self.userYawOffset) * .pi / 180.0)
             let totalTilt = max(-85, min(85, self.cameraTiltDeg + self.userPitchOffset))
             self.cameraPitchNode.eulerAngles.x = CGFloat(-totalTilt * .pi / 180.0)
-            self.cameraNode.position = SCNVector3(0.0, 0.0, self.baseCameraDistance / max(0.35, self.cameraZoom))
+            self.cameraNode.position = SCNVector3(0.0, 0.0, self.baseCameraDistance / max(0.15, self.cameraZoom * self.userZoomFactor))
             self.cameraNode.camera?.fieldOfView = CGFloat(self.cameraFOV)
         }
+        markSceneChanged()
         if animated {
+            keepRenderingForAnimation(seconds: 0.6)
             SCNTransaction.begin()
             SCNTransaction.animationDuration = 0.45
             SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -1051,5 +1195,129 @@ extension NSColor {
         let green = CGFloat((value >> 8) & 0xFF) / 255.0
         let blue = CGFloat(value & 0xFF) / 255.0
         return NSColor(srgbRed: red, green: green, blue: blue, alpha: 1.0)
+    }
+}
+
+
+// MARK: - Pure helpers (render policy, zoom, label deltas, label placement)
+
+nonisolated struct ClickyThreeLabelPoint: Equatable, Sendable {
+    let id: String
+    let point: CGPoint
+}
+
+/// Decides whether the SceneKit stage must render every frame or only on demand.
+nonisolated struct ClickyThreeRenderDemand: Sendable {
+    var hasActiveTicks: Bool
+    var hasRunningMotions: Bool
+    var isAutoSpinning: Bool
+    var isUserInteracting: Bool
+    var isAnimating: Bool
+
+    /// Seconds the idle auto-spin runs after the stage appears.
+    static let autoSpinDurationSeconds: Double = 6
+
+    var needsContinuousRendering: Bool {
+        hasActiveTicks || hasRunningMotions || isAutoSpinning || isUserInteracting || isAnimating
+    }
+
+    static func isAutoSpinActive(spinRate: Double, secondsSinceAppeared: Double, isDragging: Bool) -> Bool {
+        spinRate != 0 && !isDragging && secondsSinceAppeared < autoSpinDurationSeconds
+    }
+}
+
+nonisolated enum ClickyThreeZoom {
+    static let minimumUserZoom: Double = 0.4
+    static let maximumUserZoom: Double = 4.0
+
+    static func clamped(_ zoom: Double) -> Double {
+        guard zoom.isFinite else { return 1 }
+        return min(maximumUserZoom, max(minimumUserZoom, zoom))
+    }
+
+    /// Positive scroll (up) zooms in. Trackpads report small pixel deltas, mice report line deltas.
+    static func scrollFactor(deltaY: Double, isPrecise: Bool) -> Double {
+        let clampedDelta = max(-40, min(40, deltaY))
+        return exp(clampedDelta * (isPrecise ? 0.01 : 0.06))
+    }
+
+    static func magnifyFactor(magnification: Double) -> Double {
+        max(0.2, 1 + max(-0.8, min(2, magnification)))
+    }
+}
+
+nonisolated enum ClickyThreeLabelProjectionDelta {
+    static let minimumSendInterval: Double = 1.0 / 30.0
+    static let pixelTolerance: CGFloat = 0.5
+
+    /// True when labels were never sent, the label set changed, or any point moved more than the tolerance.
+    static func hasMeaningfulChange(
+        previous: [ClickyThreeLabelPoint]?,
+        current: [ClickyThreeLabelPoint],
+        tolerance: CGFloat = pixelTolerance
+    ) -> Bool {
+        guard let previous, previous.count == current.count else { return true }
+        for (oldLabel, newLabel) in zip(previous, current) {
+            if oldLabel.id != newLabel.id { return true }
+            if abs(oldLabel.point.x - newLabel.point.x) > tolerance { return true }
+            if abs(oldLabel.point.y - newLabel.point.y) > tolerance { return true }
+        }
+        return false
+    }
+}
+
+nonisolated enum ClickyLabelPlacement {
+    struct Result: Equatable {
+        /// X to use as the text anchor (matches the anchor implied by `side`).
+        let anchorX: CGFloat
+        let centerY: CGFloat
+        let side: String?
+    }
+
+    /// Keeps a label of `labelSize` inside `visibleBounds` (minus `margin`): flips left/right when the label would
+    /// cross an edge, then clamps whatever overflow remains.
+    static func place(
+        point: CGPoint,
+        side: String?,
+        labelSize: CGSize,
+        visibleBounds: CGRect,
+        margin: CGFloat = 6,
+        gap: CGFloat = 12
+    ) -> Result {
+        let minX = visibleBounds.minX + margin
+        let maxX = visibleBounds.maxX - margin
+        let minY = visibleBounds.minY + margin + labelSize.height / 2
+        let maxY = visibleBounds.maxY - margin - labelSize.height / 2
+
+        func span(for currentSide: String?) -> (start: CGFloat, end: CGFloat) {
+            switch currentSide {
+            case "left": return (point.x - gap - labelSize.width, point.x - gap)
+            case "right": return (point.x + gap, point.x + gap + labelSize.width)
+            default: return (point.x - labelSize.width / 2, point.x + labelSize.width / 2)
+            }
+        }
+
+        var resolvedSide = side
+        var current = span(for: side)
+        if side == "left", current.start < minX {
+            let flipped = span(for: "right")
+            if flipped.end <= maxX { resolvedSide = "right"; current = flipped }
+        } else if side == "right", current.end > maxX {
+            let flipped = span(for: "left")
+            if flipped.start >= minX { resolvedSide = "left"; current = flipped }
+        }
+
+        var shift: CGFloat = 0
+        if current.end + shift > maxX { shift = maxX - current.end }
+        if current.start + shift < minX { shift = minX - current.start }
+
+        let anchorX: CGFloat
+        switch resolvedSide {
+        case "left": anchorX = current.end + shift
+        case "right": anchorX = current.start + shift
+        default: anchorX = (current.start + current.end) / 2 + shift
+        }
+        let centerY = maxY >= minY ? min(maxY, max(minY, point.y)) : point.y
+        return Result(anchorX: anchorX, centerY: centerY, side: resolvedSide)
     }
 }

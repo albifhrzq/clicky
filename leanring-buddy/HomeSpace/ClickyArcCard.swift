@@ -252,31 +252,31 @@ public struct ClickyArcPlan: View {
         if !planSteps.isEmpty {
             switch phase {
             case .done:
-                return "Completed all \(planSteps.count) steps"
+                return String(localized: "Completed all \(planSteps.count) steps")
             case .failed:
-                return "Stopped with error"
+                return String(localized: "Something went wrong partway through.")
             case .needsYou:
-                return "Waiting for your input"
+                return String(localized: "Needs your OK to keep going")
             case .stopped:
-                return "Paused by you"
+                return String(localized: "Stopped by you.")
             case .queued, .working:
-                return "\(completedStepCount) of \(planSteps.count) steps complete"
+                return String(localized: "\(completedStepCount) of \(planSteps.count) steps complete")
             }
         }
 
         switch phase {
         case .queued:
-            return "Queued to start"
+            return String(localized: "Queued to start")
         case .working:
-            return "Working through task…"
+            return String(localized: "Working on it…")
         case .needsYou:
-            return "Needs a quick hand from you"
+            return String(localized: "Needs your OK to keep going")
         case .done:
-            return "Finished"
+            return String(localized: "Ready to view")
         case .failed:
-            return "Ran into an issue"
+            return String(localized: "Something went wrong.")
         case .stopped:
-            return "Stopped"
+            return String(localized: "Stopped before it finished.")
         }
     }
 
@@ -481,6 +481,10 @@ public struct ClickyResultCardFace: View {
     @State private var isCardHovered: Bool = false
     @State private var isFollowUpComposerVisible: Bool = false
     @State private var followUpDraft: String = ""
+    @State private var transientNotice: String?
+
+    @ObservedObject private var jobStore = ClickyJobStore.shared
+    @ObservedObject private var routineScheduler = ClickyRoutineScheduler.shared
 
     public init(
         job: ClickyJob,
@@ -518,6 +522,22 @@ public struct ClickyResultCardFace: View {
 
             ClickyArcPlan(phase: job.railPhase, planSteps: planSteps)
 
+            if let modelRetryStatus = jobStore.modelRetryStatus, job.outcome == .working {
+                modelRetryLine(modelRetryStatus)
+            }
+
+            if let timingLine {
+                Text(timingLine)
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textTertiary)
+            }
+
+            if job.outcome == .done {
+                Text(ClickyHandoffChipKind.readySentence(forArtifacts: displayedArtifacts))
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(DS.Colors.success)
+            }
+
             if !displayedArtifacts.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -536,8 +556,15 @@ public struct ClickyResultCardFace: View {
                 followUpComposerBar
             }
 
+            if let transientNotice {
+                Text(transientNotice)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(DS.Colors.warningText)
+            }
+
             actionFooter
         }
+        .contextMenu { cardContextMenu }
         .padding(DS.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -649,8 +676,24 @@ public struct ClickyResultCardFace: View {
                         .foregroundColor(DS.Colors.warningText)
                         .lineLimit(1)
                 }
+                Text("Waiting for your answer")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(DS.Colors.textTertiary)
             }
             Spacer()
+
+            if let pageURL = Self.openablePageURL(for: waitingStep) {
+                Button(action: { NSWorkspace.shared.open(pageURL) }) {
+                    Text("Open page")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundColor(DS.Colors.warningText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(DS.Colors.warning.opacity(0.18)))
+                }
+                .buttonStyle(.plain)
+                .pointerCursor()
+            }
         }
         .padding(DS.Spacing.sm)
         .background(
@@ -665,7 +708,7 @@ public struct ClickyResultCardFace: View {
 
     private var followUpComposerBar: some View {
         HStack(spacing: DS.Spacing.sm) {
-            TextField("Send a quick follow-up…", text: $followUpDraft)
+            TextField(job.railPhase == .needsYou ? String(localized: "Type an answer") : String(localized: "Send a quick follow-up…"), text: $followUpDraft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5))
                 .foregroundColor(DS.Colors.textPrimary)
@@ -721,7 +764,7 @@ public struct ClickyResultCardFace: View {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 10, weight: .semibold))
-                    Text("Open")
+                    Text(primaryOpenVerb)
                         .font(.system(size: 12, weight: .medium))
                 }
                 .foregroundColor(DS.Colors.textPrimary)
@@ -793,8 +836,93 @@ public struct ClickyResultCardFace: View {
         if let reply = job.replyText?.trimmingCharacters(in: .whitespacesAndNewlines), !reply.isEmpty {
             return reply
         }
+        switch job.outcome {
+        case .stopped:
+            return String(localized: "You stopped it before it finished.")
+        case .failed:
+            return String(localized: "Something went wrong.")
+        case .working, .done:
+            break
+        }
         let promptTrimmed = job.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         return promptTrimmed.isEmpty ? nil : promptTrimmed
+    }
+
+    /// Verb for the footer button: "Open doc", "Play video", ... once the job has a deliverable.
+    private var primaryOpenVerb: String {
+        guard job.outcome != .working, let firstArtifact = displayedArtifacts.first else {
+            return String(localized: "Open")
+        }
+        return ClickyHandoffChipKind.kind(forPath: firstArtifact.path, isLink: firstArtifact.isLink).openVerb
+    }
+
+    private static func openablePageURL(for waitingStep: ClickyJobUserStep) -> URL? {
+        guard let page = waitingStep.page?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let url = URL(string: page),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return nil
+        }
+        return url
+    }
+
+    private func modelRetryLine(_ retryStatus: ClickyModelRetryStatus) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(retryStatus.attempt <= 1 ? String(localized: "Retrying after a hiccup…") : String(localized: "Reconnecting to the model…"))
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundColor(DS.Colors.warningText)
+            Text("Reconnecting \(retryStatus.attempt)/\(retryStatus.maximum)...")
+                .font(.system(size: 10.5))
+                .foregroundColor(DS.Colors.textTertiary)
+        }
+    }
+
+    /// "Started ...", "Checked ... / Next: ...", or "No work yet".
+    private var timingLine: String? {
+        let startedDate = activeRunStartDate
+        let formatStyle = Date.FormatStyle(date: .abbreviated, time: .shortened)
+        if let routine = routineScheduler.routine(forJobID: job.id) {
+            let checkedText = job.finishedAt.map { String(localized: "Checked \($0.formatted(formatStyle))") }
+            let nextText = routine.nextRunAt.map { String(localized: "Next: \($0.formatted(formatStyle))") }
+                ?? String(localized: "No next run")
+            return [checkedText, nextText].compactMap { $0 }.joined(separator: " · ")
+        }
+        if job.outcome == .working {
+            return String(localized: "Started \(startedDate.formatted(formatStyle))")
+        }
+        if job.runs.isEmpty && job.finishedAt == nil && job.outcome != .done {
+            return String(localized: "No work yet")
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private var cardContextMenu: some View {
+        Button("Show in chat") { triggerOpen() }
+        Button("Archive") { archiveFromMenu() }
+        if job.outcome == .working {
+            Button("Stop and remove from the dock") {
+                onStop?()
+                ClickyJobStore.shared.dismissJob(jobID: job.id)
+            }
+        } else {
+            Button("Remove from the dock") {
+                ClickyJobStore.shared.dismissJob(jobID: job.id)
+            }
+        }
+    }
+
+    private func archiveFromMenu() {
+        guard !ClickyJobStore.shared.archiveJob(jobID: job.id) else { return }
+        showTransientNotice(String(localized: "Stop the agent before archiving it."))
+    }
+
+    private func showTransientNotice(_ message: String) {
+        transientNotice = message
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if transientNotice == message { transientNotice = nil }
+        }
     }
 
     private var displayedArtifacts: [ClickyJobArtifactEntry] {
@@ -833,23 +961,28 @@ public struct ClickyResultCardFace: View {
         withAnimation(.easeOut(duration: DS.Animation.fast)) {
             isFollowUpComposerVisible = false
         }
+        if job.railPhase == .needsYou {
+            showTransientNotice(String(localized: "Keeping the agent going..."))
+        } else if job.outcome == .working {
+            showTransientNotice(String(localized: "Steering the agent…"))
+        }
         onFollowUp?(trimmed)
     }
 
     private func statusMetadata(for phase: ClickyJobRailPhase) -> (title: String, iconName: String, color: Color) {
         switch phase {
         case .queued:
-            return ("Queued", "clock", DS.Colors.textSecondary)
+            return (String(localized: "Queued"), "clock", DS.Colors.textSecondary)
         case .working:
-            return ("Working", "sparkles", DS.Colors.blue400)
+            return (String(localized: "Working on it…"), "sparkles", DS.Colors.blue400)
         case .needsYou:
-            return ("Needs You", "exclamationmark.bubble.fill", DS.Colors.warning)
+            return (String(localized: "Needs a yes"), "exclamationmark.bubble.fill", DS.Colors.warning)
         case .done:
-            return ("Done", "checkmark.circle.fill", DS.Colors.success)
+            return (String(localized: "Ready to view"), "checkmark.circle.fill", DS.Colors.success)
         case .failed:
-            return ("Failed", "xmark.octagon.fill", DS.Colors.destructiveText)
+            return (String(localized: "Something went wrong"), "xmark.octagon.fill", DS.Colors.destructiveText)
         case .stopped:
-            return ("Stopped", "pause.circle.fill", DS.Colors.textTertiary)
+            return (String(localized: "Stopped before I finished"), "pause.circle.fill", DS.Colors.textTertiary)
         }
     }
 

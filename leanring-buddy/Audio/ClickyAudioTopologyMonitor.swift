@@ -304,7 +304,7 @@ public final class ClickyAudioTopologyMonitor: ObservableObject {
         return status == noErr ? deviceID : kAudioObjectUnknown
     }
 
-    nonisolated private static func queryDeviceName(deviceID: AudioObjectID) -> String? {
+    nonisolated static func queryDeviceName(deviceID: AudioObjectID) -> String? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioObjectPropertyName,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -328,7 +328,7 @@ public final class ClickyAudioTopologyMonitor: ObservableObject {
         return cfName as String
     }
 
-    nonisolated private static func queryTransportType(deviceID: AudioObjectID) -> UInt32 {
+    nonisolated static func queryTransportType(deviceID: AudioObjectID) -> UInt32 {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyTransportType,
             mScope: kAudioObjectPropertyScopeGlobal,

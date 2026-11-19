@@ -73,6 +73,18 @@ class WindowPositionManager {
         NSWorkspace.shared.activateFileViewerSelecting([appURL])
     }
 
+    /// Relaunches the app. macOS often needs a fresh process before a newly granted
+    /// Screen Recording permission takes effect.
+    static func quitAndReopenApp() {
+        ClickyAppLanguage.relaunchApp()
+    }
+
+    /// Takes one real screenshot to prove capture works, instead of trusting a preflight flag.
+    static func canTakeTestScreenshot() async -> Bool {
+        guard let captures = try? await CompanionScreenCaptureUtility.captureAllScreensAsJPEG() else { return false }
+        return captures.contains { !$0.imageData.isEmpty }
+    }
+
     // MARK: - Screen Recording Permission
 
     /// Returns true if Screen Recording permission is granted.

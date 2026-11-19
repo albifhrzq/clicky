@@ -58,6 +58,9 @@ private struct MenuBarPanelHostingContainer: View {
 
 @MainActor
 final class MenuBarPanelManager: NSObject {
+    /// Same feedback destination as the "Got feedback? DM me" button in the companion panel.
+    nonisolated static let feedbackURLString = "https://x.com/farzatv"
+
     private var statusItem: NSStatusItem?
     private var panel: NSPanel?
     nonisolated(unsafe) private var clickOutsideMonitor: Any?
@@ -275,6 +278,32 @@ final class MenuBarPanelManager: NSObject {
 
         menu.addItem(.separator())
 
+        let captureRegionItem = NSMenuItem(
+            title: String(localized: "Capture a Region…"),
+            action: #selector(handleCaptureRegionMenuItem),
+            keyEquivalent: ""
+        )
+        captureRegionItem.target = self
+        menu.addItem(captureRegionItem)
+
+        let reportBugItem = NSMenuItem(
+            title: String(localized: "Report a Bug…"),
+            action: #selector(handleOpenFeedbackLinkMenuItem),
+            keyEquivalent: ""
+        )
+        reportBugItem.target = self
+        menu.addItem(reportBugItem)
+
+        let requestFeatureItem = NSMenuItem(
+            title: String(localized: "Request a Feature…"),
+            action: #selector(handleOpenFeedbackLinkMenuItem),
+            keyEquivalent: ""
+        )
+        requestFeatureItem.target = self
+        menu.addItem(requestFeatureItem)
+
+        menu.addItem(.separator())
+
         let quitItem = NSMenuItem(
             title: "Quit Clicky",
             action: #selector(handleQuitMenuItem),
@@ -306,6 +335,16 @@ final class MenuBarPanelManager: NSObject {
 
     @objc private func handleToggleFloatingCursorMenuItem() {
         ClickyConfiguration.shared.hideFloatingCursor.toggle()
+    }
+
+    @objc private func handleCaptureRegionMenuItem() {
+        ClickyRegionCaptureController.shared.begin()
+    }
+
+    @objc private func handleOpenFeedbackLinkMenuItem() {
+        if let feedbackURL = URL(string: Self.feedbackURLString) {
+            NSWorkspace.shared.open(feedbackURL)
+        }
     }
 
     @objc private func handleQuitMenuItem() {
@@ -359,6 +398,9 @@ final class MenuBarPanelManager: NSObject {
         menuBarPanel.backgroundColor = .clear
         menuBarPanel.hasShadow = false
         menuBarPanel.hidesOnDeactivate = false
+        // The cursor buddy follows the mouse through NSEvent monitors; a local monitor only sees
+        // mouse-moved events for Clicky windows that accept them.
+        menuBarPanel.acceptsMouseMovedEvents = true
         menuBarPanel.isExcludedFromWindowsMenu = true
         menuBarPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         menuBarPanel.isMovableByWindowBackground = false

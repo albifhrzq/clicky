@@ -14,29 +14,66 @@ import ServiceManagement
 import SwiftUI
 
 enum HomeSpaceSettingsSection: String, CaseIterable, Identifiable {
-    case connection
     case general
+    case language
     case voice
+    case microphone
     case dictation
     case shortcuts
     case cursor
+    case connectors
+    case agents
+    case connection
     case browser
     case routines
+    case skills
     case memory
 
     var id: String { rawValue }
 
+    /// Sidebar layout: group header (nil = no header) and the sections under it.
+    static let sidebarGroups: [(header: String?, sections: [HomeSpaceSettingsSection])] = [
+        (nil, [.general, .language]),
+        (ClickyAppDisplayName.current.uppercased(), [.voice, .microphone, .dictation, .shortcuts, .cursor]),
+        (String(localized: "WORK"), [.connectors, .agents]),
+        (String(localized: "ADVANCED"), [.connection, .browser, .routines, .skills, .memory])
+    ]
+
     var title: String {
         switch self {
-        case .connection: return "Connection & AI"
-        case .general: return "General"
-        case .voice: return "Voice & Languages"
-        case .dictation: return "Dictation"
-        case .shortcuts: return "Shortcuts"
-        case .cursor: return "Cursor"
-        case .browser: return "Browser & Security"
-        case .routines: return "Routines"
-        case .memory: return "Memory"
+        case .general: return String(localized: "General")
+        case .language: return String(localized: "Language")
+        case .voice: return String(localized: "Voice")
+        case .microphone: return String(localized: "Microphone")
+        case .dictation: return String(localized: "Dictation")
+        case .shortcuts: return String(localized: "Shortcuts")
+        case .cursor: return String(localized: "Cursor")
+        case .connectors: return String(localized: "Integrations")
+        case .agents: return String(localized: "Agents")
+        case .connection: return String(localized: "Connection & AI")
+        case .browser: return String(localized: "Browser & Security")
+        case .routines: return String(localized: "Routines")
+        case .skills: return String(localized: "Skills")
+        case .memory: return String(localized: "Memory")
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .general: return String(localized: "How HeyClicky behaves on your Mac.")
+        case .language: return String(localized: "The language HeyClicky shows and the language it speaks.")
+        case .voice: return String(localized: "How HeyClicky speaks. Changes apply from the next spoken reply.")
+        case .microphone: return String(localized: "Which microphone HeyClicky listens through.")
+        case .dictation: return String(localized: "Languages and the words HeyClicky should spell right.")
+        case .shortcuts: return String(localized: "The keys that summon HeyClicky.")
+        case .cursor: return String(localized: "The HeyClicky cursor that lives on your screen.")
+        case .connectors: return String(localized: "Apps your agents can reach into.")
+        case .agents: return String(localized: "Where agents work and how much rope they get.")
+        case .connection: return String(localized: "Which AI HeyClicky talks to and the keys it uses.")
+        case .browser: return String(localized: "How agents use your browser, and what stays off limits.")
+        case .routines: return String(localized: "Things HeyClicky does on repeat, on this Mac.")
+        case .skills: return String(localized: "Playbooks HeyClicky follows for your kind of work.")
+        case .memory: return String(localized: "What HeyClicky remembers about you.")
         }
     }
 
@@ -44,12 +81,17 @@ enum HomeSpaceSettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .connection: return "AI"
         case .general: return "General"
+        case .language: return "Language"
         case .voice: return "Voice"
+        case .microphone: return "Microphone"
         case .dictation: return "Dictation"
         case .shortcuts: return "Shortcuts"
         case .cursor: return "Cursor"
         case .browser: return "Browser"
         case .routines: return "Routines"
+        case .connectors: return "Integrations"
+        case .agents: return "Agents"
+        case .skills: return "Skills"
         case .memory: return "Memory"
         }
     }
@@ -58,12 +100,17 @@ enum HomeSpaceSettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .connection: return "network"
         case .general: return "slider.horizontal.3"
+        case .language: return "globe"
         case .voice: return "waveform.circle"
+        case .microphone: return "mic"
         case .dictation: return "mic.fill"
         case .shortcuts: return "command"
         case .cursor: return "cursorarrow"
-        case .browser: return "globe"
+        case .browser: return "lock.shield"
         case .routines: return "clock.arrow.2.circlepath"
+        case .connectors: return "puzzlepiece.extension"
+        case .agents: return "sparkles"
+        case .skills: return "book"
         case .memory: return "brain"
         }
     }
@@ -86,6 +133,8 @@ struct HomeSpaceSettingsPage: View {
     @ObservedObject private var shortcutMonitor: GlobalPushToTalkShortcutMonitor
     @ObservedObject private var browserBridge = ClickyBrowserBridge.shared
     @ObservedObject private var chromeSetupFlow = ClickyChromeSetupFlow.shared
+    /// Observed so the extension-swap prompt re-renders when a job starts or finishes.
+    @ObservedObject private var agentRuntime = AgentHarnessRunnerRuntime.shared
     @ObservedObject private var routineScheduler = ClickyRoutineScheduler.shared
     @ObservedObject private var userMemoryStore = UserMemoryStore.shared
     @ObservedObject private var learnedHowTosStore = ClickyLearnedHowTos.shared
@@ -115,7 +164,7 @@ struct HomeSpaceSettingsPage: View {
 
     init(
         companionManager: CompanionManager,
-        initialSection: HomeSpaceSettingsSection = .connection
+        initialSection: HomeSpaceSettingsSection = .general
     ) {
         self.companionManager = companionManager
         self.initialSection = initialSection
@@ -180,45 +229,53 @@ struct HomeSpaceSettingsPage: View {
 
     private var fullWindowLayout: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("SETTINGS")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundColor(DS.Colors.textTertiary)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 14)
-                    .padding(.bottom, 6)
-
-                ForEach(HomeSpaceSettingsSection.allCases) { section in
-                    sidebarSectionButton(for: section)
+            VStack(alignment: .leading, spacing: 0) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(HomeSpaceSettingsSection.sidebarGroups.enumerated()), id: \.offset) { _, group in
+                            if let groupHeader = group.header {
+                                Text(groupHeader)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .tracking(1.6)
+                                    .foregroundColor(ClickySettingsPalette.groupHeader)
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 18)
+                                    .padding(.bottom, 4)
+                            }
+                            ForEach(group.sections) { section in
+                                sidebarSectionButton(for: section)
+                            }
+                        }
+                    }
+                    .padding(.top, 8)
                 }
 
-                Spacer()
+                Text(verbatim: ClickyAppDisplayName.versionFooter)
+                    .font(.system(size: 10.5))
+                    .foregroundColor(ClickySettingsPalette.groupHeader)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
             }
-            .frame(width: 196)
-            .background(DS.Colors.surface1.opacity(0.75))
+            .frame(width: 200)
 
-            Divider()
-                .background(DS.Colors.borderSubtle)
+            Rectangle()
+                .fill(ClickySettingsPalette.sidebarDivider)
+                .frame(width: 1)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 10) {
-                        Image(systemName: selectedSection.iconName)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(DS.Colors.accentText)
-                        Text(selectedSection.title)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(DS.Colors.textPrimary)
-                    }
+                    ClickySettingsPageHeader(title: selectedSection.title, subtitle: selectedSection.subtitle)
 
                     sectionContent(isCompact: false)
                 }
-                .padding(22)
+                .padding(.leading, 25)
+                .padding(.trailing, 25)
+                .padding(.vertical, 22)
                 .frame(maxWidth: 760, alignment: .leading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .background(ClickyPanelBackground(cornerRadius: 14, usesTranslucentMaterial: panelStylePreference.usesTransparentPanes))
+        .background(ClickySettingsPalette.contentBackground)
     }
 
     private func compactSectionChip(for section: HomeSpaceSettingsSection) -> some View {
@@ -253,29 +310,26 @@ struct HomeSpaceSettingsPage: View {
         return Button {
             selectedSection = section
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Image(systemName: section.iconName)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(isSelected ? DS.Colors.accentText : DS.Colors.textTertiary)
+                    .foregroundColor(isSelected ? ClickySettingsPalette.primaryText : ClickySettingsPalette.sidebarIcon)
                     .frame(width: 18)
 
                 Text(section.title)
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                    .foregroundColor(isSelected ? DS.Colors.textPrimary : DS.Colors.textSecondary)
+                    .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+                    .foregroundColor(isSelected ? ClickySettingsPalette.primaryText : ClickySettingsPalette.sidebarLabel)
 
                 Spacer()
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .frame(height: 44)
             .background(
-                RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
-                    .fill(isSelected ? DS.Colors.accentSubtle : Color.clear)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? ClickySettingsPalette.selectedRow : Color.clear)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
-                    .stroke(isSelected ? DS.Colors.accent.opacity(0.35) : Color.clear, lineWidth: 0.75)
-            )
-            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+            .padding(.horizontal, 20)
         }
         .buttonStyle(.plain)
         .pointerCursor()
@@ -288,8 +342,14 @@ struct HomeSpaceSettingsPage: View {
             connectionSectionView(isCompact: isCompact)
         case .general:
             generalSectionView
+        case .language:
+            languageSectionView
+        case .agents:
+            ClickyAgentsSettingsView(companionManager: companionManager)
         case .voice:
             voiceSectionView(isCompact: isCompact)
+        case .microphone:
+            ClickyMicrophoneSettingsView()
         case .dictation:
             dictationSectionView
         case .shortcuts:
@@ -300,6 +360,10 @@ struct HomeSpaceSettingsPage: View {
             browserSectionView
         case .routines:
             routinesSectionView
+        case .connectors:
+            ClickyConnectorsSettingsView()
+        case .skills:
+            ClickySkillsSettingsView(companionManager: companionManager)
         case .memory:
             memorySectionView
         }
@@ -380,15 +444,8 @@ struct HomeSpaceSettingsPage: View {
                             Image(systemName: "arrow.clockwise")
                             Text("Refresh")
                         }
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DS.Colors.textPrimary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(
-                            Capsule().fill(DS.Colors.surface3)
-                        )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ClickyGlossyPillButtonStyle.light)
                     .pointerCursor()
                 }
 
@@ -498,15 +555,7 @@ struct HomeSpaceSettingsPage: View {
                         Button("Sign Out") {
                             oauthManager.signOut()
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DS.Colors.destructiveText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule().fill(DS.Colors.destructive.opacity(0.16))
-                        )
-                        .pointerCursor()
+                        .buttonStyle(ClickyGlossyPillButtonStyle.light)
                     } else {
                         Button {
                             guard !isStartingOAuthSignIn && !oauthManager.isAuthenticating else { return }
@@ -523,13 +572,8 @@ struct HomeSpaceSettingsPage: View {
                                 }
                                 Text(oauthManager.isAuthenticating ? "Signing In..." : "Sign In with Google")
                             }
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(DS.Colors.textOnAccent)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(DS.Colors.accent))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ClickyGlossyPillButtonStyle.accent)
                         .disabled(oauthManager.isAuthenticating || isStartingOAuthSignIn)
                         .pointerCursor(isEnabled: !(oauthManager.isAuthenticating || isStartingOAuthSignIn))
                     }
@@ -699,10 +743,112 @@ struct HomeSpaceSettingsPage: View {
         }
     }
 
+    // MARK: - Language
+
+    private var languageSectionView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            settingsCard(title: String(localized: "LANGUAGE")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker(selection: $configuration.appLanguage) {
+                        Text("Same as Mac").tag("system")
+                        Text("English").tag("en")
+                        Text("Bahasa Indonesia").tag("id")
+                    } label: {
+                        Text("App language")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(DS.Colors.textPrimary)
+                    }
+                    Text("Clicky follows your Mac's language by default. Changes apply after relaunch.")
+                        .font(.system(size: 11))
+                        .foregroundColor(DS.Colors.textTertiary)
+                    Button("Relaunch now") {
+                        ClickyAppLanguage.relaunchApp()
+                    }
+                    .pointerCursor()
+                }
+            }
+
+            settingsCard(title: "VOICE LANGUAGE (\(VoiceLanguageCatalog.supportedLanguages.count) LANGUAGES)") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 11))
+                            .foregroundColor(DS.Colors.textTertiary)
+                        TextField("Filter 133 languages...", text: $voiceLanguageSearchQuery)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12))
+                            .foregroundColor(DS.Colors.textPrimary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                            .fill(DS.Colors.surface2)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
+                            .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
+                    )
+
+                    if let currentLanguage = VoiceLanguageCatalog.language(forCode: configuration.selectedVoiceLanguage) {
+                        Text("Selected: \(currentLanguage.displayLabel) [\(currentLanguage.bcp47Locale)]")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(DS.Colors.accentText)
+                    }
+
+                    let filteredLanguages = filterLanguages(query: voiceLanguageSearchQuery)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(filteredLanguages) { language in
+                                languageSelectionRow(
+                                    language: language,
+                                    isSelected: configuration.selectedVoiceLanguage == language.code
+                                ) {
+                                    configuration.selectedVoiceLanguage = language.code
+                                }
+                            }
+                        }
+                    }
+                    .frame(height: 200)
+                }
+            }
+        }
+    }
+
     // MARK: - 2. General
 
     private var generalSectionView: some View {
         VStack(alignment: .leading, spacing: 14) {
+            settingsCard(title: "NOTCH") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle(isOn: $configuration.suggestAgentTasks) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Suggest agent tasks")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DS.Colors.textPrimary)
+                            Text("Fresh task ideas every morning in your notch.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DS.Colors.textTertiary)
+                        }
+                    }
+                    .toggleStyle(ClickyGlossyToggleStyle())
+
+                    Divider().background(DS.Colors.borderSubtle)
+
+                    Toggle(isOn: $configuration.showUpcomingMeetings) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Upcoming meetings")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DS.Colors.textPrimary)
+                            Text("Countdown in the notch 5 minutes before a calendar event.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DS.Colors.textTertiary)
+                        }
+                    }
+                    .toggleStyle(ClickyGlossyToggleStyle())
+                }
+            }
+
             settingsCard(title: "APPEARANCE & FEEDBACK") {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle(isOn: $panelStylePreference.usesTransparentPanes) {
@@ -715,8 +861,7 @@ struct HomeSpaceSettingsPage: View {
                                 .foregroundColor(DS.Colors.textTertiary)
                         }
                     }
-                    .toggleStyle(.switch)
-                    .tint(DS.Colors.accent)
+                    .toggleStyle(ClickyGlossyToggleStyle())
 
                     Divider().background(DS.Colors.borderSubtle)
 
@@ -738,8 +883,7 @@ struct HomeSpaceSettingsPage: View {
                                 .foregroundColor(DS.Colors.textTertiary)
                         }
                     }
-                    .toggleStyle(.switch)
-                    .tint(DS.Colors.accent)
+                    .toggleStyle(ClickyGlossyToggleStyle())
                 }
             }
 
@@ -760,12 +904,7 @@ struct HomeSpaceSettingsPage: View {
                         Button(loginItemStatus == .enabled ? "Disable" : "Enable") {
                             toggleLoginItemRegistration()
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DS.Colors.textPrimary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(DS.Colors.surface3))
+                        .buttonStyle(ClickyGlossyPillButtonStyle.light)
                         .pointerCursor()
                     }
 
@@ -773,74 +912,6 @@ struct HomeSpaceSettingsPage: View {
                         Text(loginItemErrorMessage)
                             .font(.system(size: 11))
                             .foregroundColor(DS.Colors.warningText)
-                    }
-                }
-            }
-
-            settingsCard(title: "MACOS PERMISSIONS") {
-                VStack(alignment: .leading, spacing: 10) {
-                    permissionStatusRow(
-                        title: "Microphone",
-                        iconName: "mic",
-                        isGranted: companionManager.hasMicrophonePermission,
-                        subtitle: "Voice push-to-talk and live audio sessions",
-                        actionLabel: "Grant",
-                        action: requestMicrophonePermission
-                    )
-
-                    Divider().background(DS.Colors.borderSubtle)
-
-                    permissionStatusRow(
-                        title: "Accessibility",
-                        iconName: "hand.raised",
-                        isGranted: companionManager.hasAccessibilityPermission,
-                        subtitle: "Global shortcuts, Type Anywhere dictation, and app control",
-                        actionLabel: "Grant",
-                        action: { WindowPositionManager.requestAccessibilityPermission() },
-                        secondaryActionLabel: "Find App",
-                        secondaryAction: {
-                            WindowPositionManager.revealAppInFinder()
-                            WindowPositionManager.openAccessibilitySettings()
-                        }
-                    )
-
-                    Divider().background(DS.Colors.borderSubtle)
-
-                    permissionStatusRow(
-                        title: "Screen Recording",
-                        iconName: "rectangle.dashed.badge.record",
-                        isGranted: companionManager.hasScreenRecordingPermission,
-                        subtitle: "Captures active screen context only when triggered",
-                        actionLabel: "Grant",
-                        action: { WindowPositionManager.requestScreenRecordingPermission() }
-                    )
-
-                    Divider().background(DS.Colors.borderSubtle)
-
-                    permissionStatusRow(
-                        title: "Screen Content",
-                        iconName: "eye",
-                        isGranted: companionManager.hasScreenContentPermission,
-                        subtitle: "ScreenCaptureKit permission for multi-monitor snapshots",
-                        actionLabel: "Grant",
-                        action: { companionManager.requestScreenContentPermission() }
-                    )
-
-                    HStack {
-                        Spacer()
-                        Button {
-                            companionManager.refreshAllPermissions()
-                            loginItemStatus = SMAppService.mainApp.status
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.clockwise")
-                                Text("Refresh Status")
-                            }
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(DS.Colors.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                        .pointerCursor()
                     }
                 }
             }
@@ -864,13 +935,8 @@ struct HomeSpaceSettingsPage: View {
                         }
                         Text(elevenLabsTTSClient.isTestingVoice ? "Testing Voice..." : "Test ElevenLabs Voice")
                     }
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(DS.Colors.textPrimary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(DS.Colors.surface3))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ClickyGlossyPillButtonStyle.light)
                 .disabled(elevenLabsTTSClient.isTestingVoice)
                 .pointerCursor(isEnabled: !elevenLabsTTSClient.isTestingVoice)
 
@@ -878,12 +944,7 @@ struct HomeSpaceSettingsPage: View {
                     Button("Stop") {
                         elevenLabsTTSClient.stopPlayback()
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(DS.Colors.destructiveText)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(DS.Colors.destructive.opacity(0.14)))
+                    .buttonStyle(ClickyGlossyPillButtonStyle.light)
                     .pointerCursor()
                 }
 
@@ -944,51 +1005,6 @@ struct HomeSpaceSettingsPage: View {
 
             settingsCard(title: "GEMINI LIVE VOICES (\(VoiceLanguageCatalog.geminiVoices.count))") {
                 voiceSelectionGrid(voices: VoiceLanguageCatalog.geminiVoices, isCompact: isCompact)
-            }
-
-            settingsCard(title: "VOICE LANGUAGE (\(VoiceLanguageCatalog.supportedLanguages.count) LANGUAGES)") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 11))
-                            .foregroundColor(DS.Colors.textTertiary)
-                        TextField("Filter 133 languages...", text: $voiceLanguageSearchQuery)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12))
-                            .foregroundColor(DS.Colors.textPrimary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
-                            .fill(DS.Colors.surface2)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
-                            .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
-                    )
-
-                    if let currentLanguage = VoiceLanguageCatalog.language(forCode: configuration.selectedVoiceLanguage) {
-                        Text("Selected: \(currentLanguage.displayLabel) [\(currentLanguage.bcp47Locale)]")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(DS.Colors.accentText)
-                    }
-
-                    let filteredLanguages = filterLanguages(query: voiceLanguageSearchQuery)
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(filteredLanguages) { language in
-                                languageSelectionRow(
-                                    language: language,
-                                    isSelected: configuration.selectedVoiceLanguage == language.code
-                                ) {
-                                    configuration.selectedVoiceLanguage = language.code
-                                }
-                            }
-                        }
-                    }
-                    .frame(height: 200)
-                }
             }
         }
     }
@@ -1085,8 +1101,7 @@ struct HomeSpaceSettingsPage: View {
                                 .foregroundColor(DS.Colors.textTertiary)
                         }
                     }
-                    .toggleStyle(.switch)
-                    .tint(DS.Colors.accent)
+                    .toggleStyle(ClickyGlossyToggleStyle())
 
                     Divider().background(DS.Colors.borderSubtle)
 
@@ -1103,8 +1118,7 @@ struct HomeSpaceSettingsPage: View {
                                 .foregroundColor(DS.Colors.textTertiary)
                         }
                     }
-                    .toggleStyle(.switch)
-                    .tint(DS.Colors.accent)
+                    .toggleStyle(ClickyGlossyToggleStyle())
                 }
             }
 
@@ -1166,8 +1180,7 @@ struct HomeSpaceSettingsPage: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    .toggleStyle(.switch)
-                    .tint(DS.Colors.accent)
+                    .toggleStyle(ClickyGlossyToggleStyle())
                 }
 
                 labeledInputRow(label: "Wake Phrase") {
@@ -1246,17 +1259,32 @@ struct HomeSpaceSettingsPage: View {
                             stopRecordingShortcutKey()
                             shortcutMonitor.resetBindingsToDefaults()
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DS.Colors.textSecondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(DS.Colors.surface3))
+                        .buttonStyle(ClickyGlossyPillButtonStyle.light)
                         .pointerCursor()
                     }
                 }
             }
         }
+    }
+
+    /// Official-style keycap text: symbol plus name for modifiers, plain name for the extra key.
+    private func keycapLabels(for binding: ClickyShortcutBinding) -> [String] {
+        var labels = binding.modifiers.map { modifierKey -> String in
+            switch modifierKey {
+            case .control: return "⌃ control"
+            case .option: return "⌥ option"
+            case .shift: return "⇧ shift"
+            case .command: return "⌘ command"
+            case .function: return "fn"
+            }
+        }
+        if binding.keyCode != nil, let extraKeyLabel = binding.keyCapsuleLabels.last {
+            labels.append(extraKeyLabel)
+        }
+        if binding.triggerMode == .doubleTapModifier, let firstLabel = labels.first {
+            return ["2× \(firstLabel)"]
+        }
+        return labels
     }
 
     private func shortcutSlotRow(for slot: ClickyShortcutSlot) -> some View {
@@ -1277,26 +1305,13 @@ struct HomeSpaceSettingsPage: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(DS.Colors.textPrimary)
                 }
-                .toggleStyle(.switch)
-                .tint(DS.Colors.accent)
+                .toggleStyle(ClickyGlossyToggleStyle())
 
                 Spacer()
 
-                HStack(spacing: 4) {
-                    ForEach(binding.keyCapsuleLabels, id: \.self) { capsuleLabel in
-                        Text(capsuleLabel)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(DS.Colors.textPrimary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(DS.Colors.surface3)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .stroke(DS.Colors.borderStrong, lineWidth: 0.5)
-                            )
+                HStack(spacing: 6) {
+                    ForEach(keycapLabels(for: binding), id: \.self) { keycapLabel in
+                        ClickyKeycapView(label: keycapLabel)
                     }
                 }
             }
@@ -1357,16 +1372,7 @@ struct HomeSpaceSettingsPage: View {
                             beginRecordingShortcutKey(for: slot)
                         }
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(isRecordingKey ? DS.Colors.textOnAccent : DS.Colors.textSecondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(isRecordingKey ? DS.Colors.accent : DS.Colors.surface3)
-                    )
-                    .pointerCursor()
+                    .buttonStyle(ClickyGlossyPillButtonStyle(variant: isRecordingKey ? .accent : .light))
 
                     if binding.keyCode != nil {
                         Button("Clear Key") {
@@ -1403,8 +1409,7 @@ struct HomeSpaceSettingsPage: View {
                                 .foregroundColor(DS.Colors.textTertiary)
                         }
                     }
-                    .toggleStyle(.switch)
-                    .tint(DS.Colors.accent)
+                    .toggleStyle(ClickyGlossyToggleStyle())
                     .onChange(of: configuration.hideFloatingCursor) { _, isHidden in
                         companionManager.setClickyCursorEnabled(!isHidden)
                     }
@@ -1416,34 +1421,15 @@ struct HomeSpaceSettingsPage: View {
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(DS.Colors.textSecondary)
 
-                        HStack(spacing: 14) {
+                        HStack(spacing: 12) {
                             ForEach(cursorColorNames, id: \.self) { colorName in
-                                let isSelected = configuration.cursorColorName.lowercased() == colorName
-                                let swatchColor = DS.Colors.cursorColor(named: colorName)
-
-                                Button {
+                                ClickyCursorColorCard(
+                                    colorName: colorName,
+                                    cursorColor: DS.Colors.cursorColor(named: colorName),
+                                    isSelected: configuration.cursorColorName.lowercased() == colorName
+                                ) {
                                     configuration.cursorColorName = colorName
-                                } label: {
-                                    VStack(spacing: 5) {
-                                        ZStack {
-                                            Circle()
-                                                .fill(swatchColor)
-                                                .frame(width: 28, height: 28)
-
-                                            if isSelected {
-                                                Circle()
-                                                    .stroke(Color.white, lineWidth: 2)
-                                                    .frame(width: 34, height: 34)
-                                            }
-                                        }
-
-                                        Text(colorName.capitalized)
-                                            .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
-                                            .foregroundColor(isSelected ? DS.Colors.textPrimary : DS.Colors.textTertiary)
-                                    }
                                 }
-                                .buttonStyle(.plain)
-                                .pointerCursor()
                             }
                         }
                     }
@@ -1464,11 +1450,11 @@ struct HomeSpaceSettingsPage: View {
                             .frame(width: 8, height: 8)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(browserBridge.isConnected ? "Browser Extension Connected" : "Extension Not Connected")
+                            Text(browserStatusTitle)
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(browserBridge.isConnected ? DS.Colors.success : DS.Colors.textPrimary)
 
-                            Text(browserBridge.statusMessage)
+                            Text(browserStatusSubtitle)
                                 .font(.system(size: 11))
                                 .foregroundColor(DS.Colors.textTertiary)
                         }
@@ -1484,11 +1470,11 @@ struct HomeSpaceSettingsPage: View {
 
                     if !browserBridge.profiles.isEmpty {
                         HStack {
-                            Text("Active Profile")
+                            Text("Profile")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(DS.Colors.textSecondary)
                             Spacer()
-                            Picker("Browser Profile", selection: Binding(
+                            Picker("The profile Clicky works in.", selection: Binding(
                                 get: { browserBridge.selectedProfile ?? "" },
                                 set: { browserBridge.selectedProfile = $0.isEmpty ? nil : $0 }
                             )) {
@@ -1514,16 +1500,8 @@ struct HomeSpaceSettingsPage: View {
                             }
                         } label: {
                             Label("Install / Repair Chrome Host", systemImage: "wrench.and.screwdriver")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(DS.Colors.textPrimary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(
-                                    RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
-                                        .fill(DS.Colors.surface3)
-                                )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ClickyGlossyPillButtonStyle.light)
                         .pointerCursor()
 
                         Button {
@@ -1543,14 +1521,26 @@ struct HomeSpaceSettingsPage: View {
                         .pointerCursor()
                     }
 
-                    if chromeSetupFlow.hasOldCopyToRemove {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(DS.Colors.warning)
-                            Text("Old unpacked extension detected.")
+                    if chromeSetupFlow.shouldShowNewExtensionPrompt {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(DS.Colors.warning)
+                                Text("There's a new version of the extension that updates itself. Swap it in once and you're set.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DS.Colors.warningText)
+                                Spacer()
+                                Button("Get new extension") {
+                                    chromeSetupFlow.openChromeWebStore()
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(DS.Colors.accentText)
+                                .pointerCursor()
+                            }
+                            Text(ClickyChromeSetupFlow.developerModeStepInstruction)
                                 .font(.system(size: 11))
-                                .foregroundColor(DS.Colors.warningText)
-                            Spacer()
+                                .foregroundColor(DS.Colors.textSecondary)
                             Button("Open Extensions") {
                                 chromeSetupFlow.openExtensionsPageForSwap()
                             }
@@ -1559,6 +1549,10 @@ struct HomeSpaceSettingsPage: View {
                             .foregroundColor(DS.Colors.accentText)
                             .pointerCursor()
                         }
+                    } else if chromeSetupFlow.isNewExtensionPromptWaitingForIdle {
+                        Text("A job is using \(chromeSetupFlow.preferredBrowserName) right now, in a tab group next to yours.")
+                            .font(.system(size: 11))
+                            .foregroundColor(DS.Colors.textTertiary)
                     }
 
                     if let browserHostStatusNote {
@@ -1568,21 +1562,27 @@ struct HomeSpaceSettingsPage: View {
                     }
                 }
             }
+        }
+    }
 
-            settingsCard(title: "UPLOAD & TOOL SECURITY") {
-                Toggle(isOn: $configuration.alwaysApproveFileUploads) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Always Approve File Uploads")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(DS.Colors.textPrimary)
-                        Text("Skip per-turn confirmation prompts when browser automation uploads local workspace files.")
-                            .font(.system(size: 11))
-                            .foregroundColor(DS.Colors.textTertiary)
-                    }
-                }
-                .toggleStyle(.switch)
-                .tint(DS.Colors.accent)
-            }
+    private var browserStatusTitle: String {
+        if browserBridge.isConnected { return String(localized: "Chrome connected") }
+        if case .awaitingExtensionConnection = chromeSetupFlow.setupState { return String(localized: "Waiting for Chrome") }
+        if case .failed = chromeSetupFlow.setupState { return String(localized: "Setup failed") }
+        return String(localized: "Not set up")
+    }
+
+    private var browserStatusSubtitle: String {
+        let browserName = chromeSetupFlow.preferredBrowserName
+        switch chromeSetupFlow.setupState {
+        case .connected:
+            return String(localized: "\(browserName)'s connected! i can use the sites you're signed into now ^_^")
+        case .awaitingExtensionConnection:
+            return String(localized: "Setting it up. It connects by itself once it's added to \(browserName).")
+        case .failed(let message):
+            return String(localized: "Setup failed: \(message)")
+        default:
+            return String(localized: "Works with Chrome, Edge, Brave, Arc and other Chrome-based browsers. Clicky's extension is in the Chrome Web Store.")
         }
     }
 
@@ -1655,23 +1655,13 @@ struct HomeSpaceSettingsPage: View {
                     Button(routine.isPaused ? "Resume" : "Pause") {
                         routineScheduler.togglePause(id: routine.id)
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(DS.Colors.textPrimary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(DS.Colors.surface3))
+                    .buttonStyle(ClickyGlossyPillButtonStyle.light)
                     .pointerCursor()
 
                     Button("Run") {
                         Task { await routineScheduler.runNow(id: routine.id) }
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(DS.Colors.textOnAccent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(DS.Colors.accent))
+                    .buttonStyle(ClickyGlossyPillButtonStyle.accent)
                     .pointerCursor()
 
                     Button {
@@ -1748,12 +1738,7 @@ struct HomeSpaceSettingsPage: View {
                             userMemoryStore.loadFromDisk()
                             memoryMarkdownDraft = userMemoryStore.markdown
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(DS.Colors.textSecondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(DS.Colors.surface3))
+                        .buttonStyle(ClickyGlossyPillButtonStyle.light)
                         .pointerCursor()
 
                         Button("Save Memory") {
@@ -1764,12 +1749,7 @@ struct HomeSpaceSettingsPage: View {
                                 didSaveMemoryRecently = false
                             }
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DS.Colors.textOnAccent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(DS.Colors.accent))
+                        .buttonStyle(ClickyGlossyPillButtonStyle.accent)
                         .pointerCursor()
                     }
 
@@ -1787,12 +1767,7 @@ struct HomeSpaceSettingsPage: View {
                             memoryMarkdownDraft = userMemoryStore.markdown
                             newPreferenceDraft = ""
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DS.Colors.textOnAccent)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(DS.Colors.accent))
+                        .buttonStyle(ClickyGlossyPillButtonStyle.accent)
                         .pointerCursor()
                     }
 
@@ -1868,25 +1843,9 @@ struct HomeSpaceSettingsPage: View {
 
     private func settingsCard<Content: View>(
         title: String,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(DS.Colors.textTertiary)
-
-            content()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: DS.CornerRadius.large, style: .continuous)
-                .fill(DS.Colors.surface1.opacity(0.9))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.CornerRadius.large, style: .continuous)
-                .stroke(DS.Colors.borderSubtle, lineWidth: 0.75)
-        )
+        ClickySettingsSectionCard(title: title, content: content)
     }
 
     private func labeledInputRow<Field: View>(
@@ -1903,76 +1862,8 @@ struct HomeSpaceSettingsPage: View {
         }
     }
 
-    private func permissionStatusRow(
-        title: String,
-        iconName: String,
-        isGranted: Bool,
-        subtitle: String,
-        actionLabel: String,
-        action: @escaping () -> Void,
-        secondaryActionLabel: String? = nil,
-        secondaryAction: (() -> Void)? = nil
-    ) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: iconName)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(isGranted ? DS.Colors.success : DS.Colors.warning)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(DS.Colors.textPrimary)
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundColor(DS.Colors.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            if isGranted {
-                statusBadge(label: "Granted", isPositive: true)
-            } else {
-                HStack(spacing: 6) {
-                    Button(actionLabel, action: action)
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DS.Colors.textOnAccent)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(DS.Colors.accent))
-                        .pointerCursor()
-
-                    if let secondaryActionLabel, let secondaryAction {
-                        Button(secondaryActionLabel, action: secondaryAction)
-                            .buttonStyle(.plain)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(DS.Colors.textSecondary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Capsule().stroke(DS.Colors.borderSubtle, lineWidth: 0.8))
-                            .pointerCursor()
-                    }
-                }
-            }
-        }
-    }
-
     private func statusBadge(label: String, isPositive: Bool) -> some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(isPositive ? DS.Colors.success : DS.Colors.warning)
-                .frame(width: 6, height: 6)
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(isPositive ? DS.Colors.success : DS.Colors.warningText)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule().fill((isPositive ? DS.Colors.success : DS.Colors.warning).opacity(0.14))
-        )
+        ClickySettingsStatusBadge(label: label, isPositive: isPositive)
     }
 
     private func languageSelectionRow(
@@ -2100,19 +1991,6 @@ struct HomeSpaceSettingsPage: View {
         } catch {
             loginItemErrorMessage = error.localizedDescription
             loginItemStatus = SMAppService.mainApp.status
-        }
-    }
-
-    private func requestMicrophonePermission() {
-        let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        if status == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .audio) { _ in
-                Task { @MainActor in
-                    companionManager.refreshAllPermissions()
-                }
-            }
-        } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
-            NSWorkspace.shared.open(url)
         }
     }
 }

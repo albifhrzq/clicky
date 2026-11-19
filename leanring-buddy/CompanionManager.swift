@@ -15,7 +15,6 @@ import Combine
 import CoreFoundation
 import CoreMedia
 import Foundation
-import PostHog
 import ScreenCaptureKit
 import SwiftUI
 
@@ -33,6 +32,10 @@ public nonisolated struct ClickyChatMessage: Identifiable, Codable, Equatable, S
     public let timestamp: Date
     public let clickySlug: String?
     public var artifactPaths: [String]
+    /// Drawing produced by this turn, stored in `ClickyRecentDrawings` so the chat can replay it.
+    public var drawingID: UUID?
+    /// Past-tense events of the turn (English source strings, localized when rendered), e.g. "Looked at your screen".
+    public var activity: [String]
 
     public init(
         id: UUID = UUID(),
@@ -40,7 +43,9 @@ public nonisolated struct ClickyChatMessage: Identifiable, Codable, Equatable, S
         text: String,
         timestamp: Date = Date(),
         clickySlug: String? = nil,
-        artifactPaths: [String] = []
+        artifactPaths: [String] = [],
+        drawingID: UUID? = nil,
+        activity: [String] = []
     ) {
         self.id = id
         self.role = role
@@ -48,6 +53,21 @@ public nonisolated struct ClickyChatMessage: Identifiable, Codable, Equatable, S
         self.timestamp = timestamp
         self.clickySlug = clickySlug
         self.artifactPaths = artifactPaths
+        self.drawingID = drawingID
+        self.activity = activity
+    }
+
+    // Custom decoding so chats saved before `activity` existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        role = try container.decode(String.self, forKey: .role)
+        text = try container.decode(String.self, forKey: .text)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        clickySlug = try container.decodeIfPresent(String.self, forKey: .clickySlug)
+        artifactPaths = try container.decodeIfPresent([String].self, forKey: .artifactPaths) ?? []
+        drawingID = try container.decodeIfPresent(UUID.self, forKey: .drawingID)
+        activity = try container.decodeIfPresent([String].self, forKey: .activity) ?? []
     }
 }
 
@@ -69,6 +89,8 @@ final class CompanionManager: ObservableObject {
     @Published var activeDocumentNotice: DocumentAccessNotice?
     @Published var textInputDraft: String = ""
     @Published var chatMessages: [ClickyChatMessage] = []
+    /// Job offered by the companion and waiting for "Start job" (only when Ask before starting jobs is on).
+    @Published var pendingHandoffRequest: ClickyHandoffRequest?
 
     /// Screen location (global AppKit coords) of a detected UI element the
     /// buddy should fly to and point at. Parsed from the AI response;
@@ -81,17 +103,9 @@ final class CompanionManager: ObservableObject {
     /// BlueCursorView uses this instead of a random pointer phrase.
     @Published var detectedElementBubbleText: String?
 
-    // MARK: - Onboarding Video State (shared across all screen overlays)
-
-    @Published var onboardingVideoPlayer: AVPlayer?
-    @Published var showOnboardingVideo: Bool = false
-    @Published var onboardingVideoOpacity: Double = 0.0
-    private var onboardingVideoEndObserver: NSObjectProtocol?
-    private var onboardingDemoTimeObserver: Any?
-
     // MARK: - Onboarding Prompt Bubble
 
-    /// Text streamed character-by-character on the cursor after the onboarding video ends.
+    /// Text shown on the cursor bubble during the interactive onboarding tour (line + step counter).
     @Published var onboardingPromptText: String = ""
     @Published var onboardingPromptOpacity: Double = 0.0
     @Published var showOnboardingPrompt: Bool = false
@@ -100,8 +114,11 @@ final class CompanionManager: ObservableObject {
 
     private var onboardingMusicPlayer: AVAudioPlayer?
     private var onboardingMusicFadeTimer: Timer?
-    private var onboardingPromptStreamTask: Task<Void, Never>?
     private var onboardingAudioFadeTask: Task<Void, Never>?
+
+    /// Drives the interactive first-run tour (replaces the old onboarding video).
+    let onboardingTourController = ClickyOnboardingTourController()
+    private var onboardingTourFallbackStartTask: Task<Void, Never>?
 
     let buddyDictationManager = BuddyDictationManager()
     let globalPushToTalkShortcutMonitor = GlobalPushToTalkShortcutMonitor()
@@ -125,6 +142,17 @@ final class CompanionManager: ObservableObject {
     private var shortcutTransitionCancellable: AnyCancellable?
     private var shortcutSlotEventCancellable: AnyCancellable?
     private var voiceStateCancellable: AnyCancellable?
+    private var jobStoreAnnouncementCancellable: AnyCancellable?
+    private var voiceStateAnnouncementFlushCancellable: AnyCancellable?
+    /// nil until the first jobs snapshot after launch, so restored jobs are never announced.
+    private var lastSeenJobPhasesByJobID: [String: ClickyJobRailPhase]?
+    private var pendingJobAnnouncementLines: [String] = []
+    private var jobAnnouncementBubbleHideTask: Task<Void, Never>?
+    private var pendingJobAnnouncementRetryTask: Task<Void, Never>?
+    private let maximumPendingJobAnnouncementLines = 3
+    private let maximumSpokenJobAnnouncementsPerUpdate = 2
+    private let jobAnnouncementBubbleVisibleNanoseconds: UInt64 = 6_000_000_000
+    private var drawingCompanionBusyCancellable: AnyCancellable?
     private var audioPowerCancellable: AnyCancellable?
     private var configurationModelCancellable: AnyCancellable?
     private var hideCursorCancellable: AnyCancellable?
@@ -149,7 +177,7 @@ final class CompanionManager: ObservableObject {
     }
 
     var isOnboardingActive: Bool {
-        showOnboardingVideo || showOnboardingPrompt
+        onboardingTourController.isActive || showOnboardingPrompt
     }
 
     var activeAgentTaskCount: Int {
@@ -219,42 +247,25 @@ final class CompanionManager: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "hasCompletedOnboarding") }
     }
 
-    /// Whether the user has submitted their email during onboarding.
-    @Published var hasSubmittedEmail: Bool = UserDefaults.standard.bool(forKey: "hasSubmittedEmail")
-
-    /// Submits the user's email to FormSpark and identifies them in PostHog.
-    func submitEmail(_ email: String) {
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedEmail.isEmpty else { return }
-
-        hasSubmittedEmail = true
-        UserDefaults.standard.set(true, forKey: "hasSubmittedEmail")
-
-        PostHogSDK.shared.identify(trimmedEmail, userProperties: [
-            "email": trimmedEmail
-        ])
-
-        Task {
-            var request = URLRequest(url: URL(string: "https://submit-form.com/RWbGJxmIs")!)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try? JSONSerialization.data(withJSONObject: ["email": trimmedEmail])
-            _ = try? await URLSession.shared.data(for: request)
-        }
-    }
-
     func start() {
         refreshAllPermissions()
         print("🔑 Clicky start — accessibility: \(hasAccessibilityPermission), screen: \(hasScreenRecordingPermission), mic: \(hasMicrophonePermission), screenContent: \(hasScreenContentPermission), onboarded: \(hasCompletedOnboarding)")
 
         startPermissionPolling()
         bindConfigurationSync()
+        bindJobAnnouncements()
         bindDocumentReaderObservation()
         bindAudioPowerLevel()
         bindVoiceStateObservation()
         bindShortcutMonitorCallbacks()
         bindRealtimeVoiceController()
+        bindDrawingEngineCallbacks()
         bindWakeWordListener()
+        // The drawing's Clear pill and pen handoff wait until Clicky is done talking.
+        drawingCompanionBusyCancellable = $voiceState
+            .sink { voiceState in
+                ScreenAnnotationManager.shared.setCompanionBusy(voiceState != .idle)
+            }
 
         // If the user already completed onboarding AND all permissions are
         // still granted, show the cursor overlay immediately unless hidden.
@@ -266,7 +277,7 @@ final class CompanionManager: ObservableObject {
     }
 
     /// Triggers the onboarding sequence — dismisses the panel and restarts
-    /// the overlay so the welcome animation and intro video play.
+    /// the overlay so the welcome animation plays and the interactive tour starts.
     func triggerOnboarding() {
         markBusy()
         NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
@@ -277,9 +288,10 @@ final class CompanionManager: ObservableObject {
 
         overlayWindowManager.showOverlay(onScreens: NSScreen.screens, companionManager: self)
         isOverlayVisible = overlayWindowManager.isShowingOverlay()
+        scheduleOnboardingTourFallbackStart()
     }
 
-    /// Replays the onboarding experience from the "Watch Onboarding Again" footer link.
+    /// Replays the onboarding tour from the "Replay Tour" footer link.
     func replayOnboarding() {
         markBusy()
         NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
@@ -288,9 +300,10 @@ final class CompanionManager: ObservableObject {
         overlayWindowManager.hasShownOverlayBefore = false
         overlayWindowManager.showOverlay(onScreens: NSScreen.screens, companionManager: self)
         isOverlayVisible = overlayWindowManager.isShowingOverlay()
+        scheduleOnboardingTourFallbackStart()
     }
 
-    private func stopOnboardingMusic() {
+    func stopOnboardingMusic() {
         onboardingMusicFadeTimer?.invalidate()
         onboardingMusicFadeTimer = nil
         onboardingAudioFadeTask?.cancel()
@@ -299,7 +312,7 @@ final class CompanionManager: ObservableObject {
         onboardingMusicPlayer = nil
     }
 
-    private func startOnboardingMusic() {
+    func startOnboardingMusic() {
         stopOnboardingMusic()
         guard let musicURL = Bundle.main.url(forResource: "ff", withExtension: "mp3") else {
             print("⚠️ Clicky: ff.mp3 not found in bundle")
@@ -405,18 +418,28 @@ final class CompanionManager: ObservableObject {
         let previouslyHadAll = allPermissionsGranted
 
         let currentlyHasAccessibility = WindowPositionManager.hasAccessibilityPermission()
-        hasAccessibilityPermission = currentlyHasAccessibility
+        if hasAccessibilityPermission != currentlyHasAccessibility {
+            hasAccessibilityPermission = currentlyHasAccessibility
+        }
 
+        // start() is idempotent (no-op when the tap already runs) and retries a
+        // failed tap creation, so keep calling it while granted. stop() only on change.
         if currentlyHasAccessibility {
             globalPushToTalkShortcutMonitor.start()
-        } else {
+        } else if previouslyHadAccessibility {
             globalPushToTalkShortcutMonitor.stop()
         }
 
-        hasScreenRecordingPermission = WindowPositionManager.hasScreenRecordingPermission()
+        let currentlyHasScreenRecording = WindowPositionManager.hasScreenRecordingPermission()
+        if hasScreenRecordingPermission != currentlyHasScreenRecording {
+            hasScreenRecordingPermission = currentlyHasScreenRecording
+        }
 
         let micAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-        hasMicrophonePermission = micAuthStatus == .authorized
+        let currentlyHasMicrophone = micAuthStatus == .authorized
+        if hasMicrophonePermission != currentlyHasMicrophone {
+            hasMicrophonePermission = currentlyHasMicrophone
+        }
 
         if previouslyHadAccessibility != hasAccessibilityPermission
             || previouslyHadScreenRecording != hasScreenRecordingPermission
@@ -440,6 +463,10 @@ final class CompanionManager: ObservableObject {
 
         if !previouslyHadAll && allPermissionsGranted {
             ClickyAnalytics.trackAllPermissionsGranted()
+        }
+
+        if previouslyHadAll != allPermissionsGranted {
+            startPermissionPolling()
         }
     }
 
@@ -495,7 +522,7 @@ final class CompanionManager: ObservableObject {
         submitTextPrompt("Say hello in one short sentence and mention which model is replying.")
     }
 
-    func submitTextPrompt(_ prompt: String, clickySlug: String? = nil) {
+    func submitTextPrompt(_ prompt: String, clickySlug: String? = nil, isFromDrawingButton: Bool = false) {
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
@@ -541,15 +568,27 @@ final class CompanionManager: ObservableObject {
                 self.activeDocumentNotice = ActiveDocumentReader.shared.activeDocumentAccessNotice
 
                 let screenCaptures = (try? await CompanionScreenCaptureUtility.captureAllScreensAsJPEG()) ?? []
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    self.removeEmptyAssistantPlaceholder(id: assistantMessageID)
+                    return
+                }
 
+                let queuedRegionImages = ClickyRegionCaptureController.shared.consumeQueuedRegionsAsLabeledImages()
                 let labeledImages = screenCaptures.map { capture in
                     let dimensionInfo = " (image dimensions: \(capture.screenshotWidthInPixels)x\(capture.screenshotHeightInPixels) pixels)"
                     return (data: capture.imageData, label: capture.label + dimensionInfo)
-                }
+                } + queuedRegionImages
+                self.appendActivity(
+                    to: assistantMessageID,
+                    ClickyChatActivityLedger.eventsForTurn(
+                        tookScreenshot: !screenCaptures.isEmpty,
+                        attachedRegionImageCount: queuedRegionImages.count,
+                        readDocumentText: !(docContext?.extractedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                    )
+                )
 
                 let systemPrompt = self.buildSystemPrompt(
-                    basePrompt: Self.companionTextResponseSystemPrompt,
+                    basePrompt: ClickyCompanionSystemPrompts.textSystemPrompt(),
                     userInput: trimmedPrompt,
                     clickySlug: clickySlug
                 )
@@ -585,19 +624,35 @@ final class CompanionManager: ObservableObject {
                     }
                 )
 
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    self.removeEmptyAssistantPlaceholder(id: assistantMessageID)
+                    return
+                }
 
                 if hasDetectedDrawingBlock || ScreenAnnotationManager.extractDrawingCode(from: fullResponseText, allowUnclosedFence: false) != nil {
                     _ = ScreenAnnotationManager.shared.feedStreamingResponse(fullResponseText, done: true)
+                    if let recordedDrawingID = self.recordFinishedDrawing(userPrompt: trimmedPrompt),
+                       let assistantMessageIndex = self.chatMessages.firstIndex(where: { $0.id == assistantMessageID }) {
+                        self.chatMessages[assistantMessageIndex].drawingID = recordedDrawingID
+                        self.appendActivity(to: assistantMessageID, [ClickyChatActivityLedger.savedDrawing])
+                    }
                 }
 
                 let textWithoutDrawingBlocks = Self.stripDrawingCodeBlocks(from: fullResponseText)
-                let parseResult = Self.parsePointingCoordinates(from: textWithoutDrawingBlocks)
+                let handoffParse = ClickyHandoffTagParser.parse(from: textWithoutDrawingBlocks)
+                let parseResult = Self.parsePointingCoordinates(from: handoffParse.text)
                 let displayReply = parseResult.spokenText.isEmpty
                     ? "Drawn on your screen."
                     : parseResult.spokenText
 
                 self.updateAssistantMessage(id: assistantMessageID, text: displayReply)
+                if let handoffRequest = handoffParse.request {
+                    self.handleHandoffRequest(
+                        handoffRequest,
+                        assistantMessageID: assistantMessageID,
+                        source: isFromDrawingButton ? .drawingButton : .replyTag(userText: trimmedPrompt)
+                    )
+                }
 
                 if parseResult.coordinate != nil {
                     self.voiceState = .idle
@@ -606,11 +661,19 @@ final class CompanionManager: ObservableObject {
 
                 self.appendConversationExchange(
                     userTranscript: trimmedPrompt,
-                    assistantResponse: displayReply
+                    assistantResponse: displayReply,
+                    responseIncludedDrawing: ScreenAnnotationManager.extractDrawingCode(from: fullResponseText, allowUnclosedFence: false) != nil
                 )
 
                 ClickySoundEffectPlayer.shared.play(.clickyTextReceive)
                 ClickyAnalytics.trackAIResponseReceived(response: displayReply)
+
+                // Speaker toggle: read typed-chat answers aloud. displayReply already has tags stripped,
+                // and pointing was handled above, so this only speaks.
+                if ClickyConfiguration.shared.readsAnswersAloud,
+                   !displayReply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    await self.speakVoiceResponse(displayReply)
+                }
             } catch is CancellationError {
                 self.removeEmptyAssistantPlaceholder(id: assistantMessageID)
             } catch {
@@ -626,6 +689,22 @@ final class CompanionManager: ObservableObject {
                 self.scheduleTransientHideIfNeeded()
             }
         }
+    }
+
+    /// ID of the drawing recorded by the most recent turn (voice turns attach it to their chat message).
+    private(set) var lastRecordedDrawingID: UUID?
+
+    /// Stores the drawing just finished on screen in Home → Drawings and returns its ID.
+    @discardableResult
+    func recordFinishedDrawing(userPrompt: String) -> UUID? {
+        let annotationManager = ScreenAnnotationManager.shared
+        let drawingTitle = annotationManager.currentDrawingTitle ?? Self.deriveJobTitle(from: userPrompt)
+        let recordedDrawing = ClickyRecentDrawings.shared.record(
+            title: drawingTitle,
+            code: annotationManager.currentReplayProgram
+        )
+        lastRecordedDrawingID = recordedDrawing?.id
+        return recordedDrawing?.id
     }
 
     func startBackgroundAgentTask(prompt: String, clickySlug: String? = nil) {
@@ -731,9 +810,15 @@ final class CompanionManager: ObservableObject {
                     "type": "http",
                     "url": endpointURL.absoluteString,
                     "headers": [
-                        "Authorization": "Bearer \(ClickyLoopbackMCPServer.shared.bearerToken)"
+                        "Authorization": "Bearer \(ClickyLoopbackMCPServer.shared.bearerToken)",
+                        "X-Clicky-Slug": clickySlug,
+                        "X-Clicky-Thread": threadID
                     ]
                 ]
+            }
+            for (customServerName, customServerEntry) in ClickyCustomConnectorStore.shared.agentMCPServerEntries()
+            where mcpServers[customServerName] == nil {
+                mcpServers[customServerName] = customServerEntry
             }
 
             let agentsMarkdown = ClickyWorkFolderFiles.shared.readAgentsMarkdown(forSlug: clickySlug)
@@ -745,7 +830,7 @@ final class CompanionManager: ObservableObject {
                 threadID: threadID,
                 userMemory: userMemoryBlock,
                 agentInstructions: agentsMarkdown,
-                activeSkills: "",
+                activeSkills: ClickySkillStore.shared.formattedActiveSkillsPromptBlock() ?? "",
                 learnedHowTos: learnedHowTosBlock,
                 commitImmediately: true
             )
@@ -766,7 +851,7 @@ final class CompanionManager: ObservableObject {
                 model: agentModel,
                 mcpServers: mcpServers,
                 skillDirectories: [],
-                instructions: standingContext.injectedText,
+                instructions: ClickyJobInstructions.build(standingContext: standingContext.injectedText),
                 imagePaths: [],
                 onEvent: { [weak self] event in
                     guard let self else { return }
@@ -939,9 +1024,15 @@ final class CompanionManager: ObservableObject {
                     "type": "http",
                     "url": endpointURL.absoluteString,
                     "headers": [
-                        "Authorization": "Bearer \(ClickyLoopbackMCPServer.shared.bearerToken)"
+                        "Authorization": "Bearer \(ClickyLoopbackMCPServer.shared.bearerToken)",
+                        "X-Clicky-Slug": slug,
+                        "X-Clicky-Thread": threadID
                     ]
                 ]
+            }
+            for (customServerName, customServerEntry) in ClickyCustomConnectorStore.shared.agentMCPServerEntries()
+            where mcpServers[customServerName] == nil {
+                mcpServers[customServerName] = customServerEntry
             }
 
             let agentsMarkdown = ClickyWorkFolderFiles.shared.readAgentsMarkdown(forSlug: slug)
@@ -951,6 +1042,7 @@ final class CompanionManager: ObservableObject {
                 threadID: threadID,
                 userMemory: userMemoryBlock,
                 agentInstructions: agentsMarkdown,
+                activeSkills: ClickySkillStore.shared.formattedActiveSkillsPromptBlock() ?? "",
                 commitImmediately: true
             )
 
@@ -963,7 +1055,7 @@ final class CompanionManager: ObservableObject {
                 model: ClickyConfiguration.shared.selectedAgentModel,
                 mcpServers: mcpServers,
                 skillDirectories: [],
-                instructions: standingContext.injectedText,
+                instructions: ClickyJobInstructions.build(standingContext: standingContext.injectedText),
                 imagePaths: [],
                 onEvent: { event in
                     if case .answer(let rawText, let parsed) = event.payload {
@@ -1069,8 +1161,12 @@ final class CompanionManager: ObservableObject {
     }
 
     private func startPermissionPolling() {
-        accessibilityCheckTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        // Re-armed by refreshAllPermissions when allPermissionsGranted flips,
+        // so the interval follows ClickyIdleChurnRules.permissionPollInterval.
+        accessibilityCheckTimer?.invalidate()
+        let pollInterval = ClickyIdleChurnRules.permissionPollInterval(allPermissionsGranted: allPermissionsGranted)
+        accessibilityCheckTimer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
                 self?.refreshAllPermissions()
             }
         }
@@ -1079,10 +1175,127 @@ final class CompanionManager: ObservableObject {
     private func bindAudioPowerLevel() {
         audioPowerCancellable = buddyDictationManager.$currentAudioPowerLevel
             .combineLatest(RealtimeVoiceController.shared.$currentAudioPowerLevel)
+            .map { dictationPower, realtimePower in max(dictationPower, realtimePower) }
+            .removeDuplicates()
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] dictationPower, realtimePower in
-                self?.currentAudioPowerLevel = max(dictationPower, realtimePower)
+            .sink { [weak self] combinedPower in
+                guard let self else { return }
+                if ClickyIdleChurnRules.shouldPublishAudioLevel(
+                    current: self.currentAudioPowerLevel,
+                    next: combinedPower
+                ) {
+                    self.currentAudioPowerLevel = combinedPower
+                }
             }
+    }
+
+    // MARK: - Background job announcements
+
+    private func bindJobAnnouncements() {
+        // Drive narration is best effort: drop a line rather than talk over the user or over other speech.
+        ClickyDriveStepExecutor.narrationSpeaker = { [weak self] narrationText in
+            guard let self,
+                  self.voiceState == .idle,
+                  !self.buddyDictationManager.isDictationInProgress,
+                  !self.elevenLabsTTSClient.isPlaying,
+                  !self.fallbackSpeechSynthesizer.isSpeaking else { return }
+            Task { try? await self.elevenLabsTTSClient.speakText(narrationText, allowSystemFallback: true, isUnprompted: true) }
+        }
+
+        jobStoreAnnouncementCancellable = ClickyJobStore.shared.$jobs
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] currentJobs in
+                self?.announceJobTransitions(currentJobs: currentJobs)
+            }
+
+        // Queued lines wait for the interaction to finish instead of being dropped.
+        voiceStateAnnouncementFlushCancellable = $voiceState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] updatedVoiceState in
+                guard updatedVoiceState == .idle else { return }
+                self?.flushPendingJobAnnouncementLinesIfPossible()
+            }
+    }
+
+    private func announceJobTransitions(currentJobs: [ClickyJob]) {
+        let announcementEvents = ClickyJobAnnouncementPolicy.events(
+            previousPhasesByJobID: lastSeenJobPhasesByJobID,
+            currentJobs: currentJobs
+        )
+        lastSeenJobPhasesByJobID = ClickyJobAnnouncementPolicy.phasesByJobID(currentJobs)
+
+        guard !announcementEvents.isEmpty, !onboardingTourController.isActive else { return }
+        let configuration = ClickyConfiguration.shared
+
+        if configuration.speakWhenJobStartsOrFinishes {
+            // Coalesce: a burst of events speaks at most two lines, the most recent ones.
+            let spokenLines = announcementEvents
+                .suffix(maximumSpokenJobAnnouncementsPerUpdate)
+                .map { ClickyJobAnnouncementPolicy.spokenLine(for: $0) }
+            pendingJobAnnouncementLines.append(contentsOf: spokenLines)
+            if pendingJobAnnouncementLines.count > maximumPendingJobAnnouncementLines {
+                pendingJobAnnouncementLines.removeFirst(pendingJobAnnouncementLines.count - maximumPendingJobAnnouncementLines)
+            }
+            flushPendingJobAnnouncementLinesIfPossible()
+        }
+
+        if configuration.showJobUpdatesBesideCursor,
+           let lastBubbleText = announcementEvents.compactMap({ ClickyJobAnnouncementPolicy.cursorBubbleText(for: $0) }).last {
+            showJobAnnouncementBubble(text: lastBubbleText)
+        }
+    }
+
+    private func flushPendingJobAnnouncementLinesIfPossible() {
+        guard !pendingJobAnnouncementLines.isEmpty else { return }
+        guard !onboardingTourController.isActive else { return }
+        guard voiceState == .idle else { return }
+        guard !elevenLabsTTSClient.isPlaying, !fallbackSpeechSynthesizer.isSpeaking else {
+            // Speech that isn't a voice turn (an earlier announcement) never moves voiceState, so
+            // wait for the playback itself instead of a voiceState change that may never come.
+            guard pendingJobAnnouncementRetryTask == nil else { return }
+            pendingJobAnnouncementRetryTask = Task { [weak self] in
+                await self?.waitForSpeechPlaybackToFinish()
+                self?.pendingJobAnnouncementRetryTask = nil
+                guard !Task.isCancelled else { return }
+                self?.flushPendingJobAnnouncementLinesIfPossible()
+            }
+            return
+        }
+
+        // One utterance for the whole queue so lines never talk over each other.
+        let combinedLine = pendingJobAnnouncementLines.joined(separator: " ")
+        pendingJobAnnouncementLines.removeAll()
+        Task { [weak self] in
+            guard let self else { return }
+            // Quiet-during-calls is enforced inside speakText via isUnprompted.
+            try? await self.elevenLabsTTSClient.speakText(combinedLine, allowSystemFallback: true, isUnprompted: true)
+        }
+    }
+
+    private func showJobAnnouncementBubble(text: String) {
+        // The tour owns the bubble while it runs, and a live voice turn owns the cursor; never touch either.
+        guard !onboardingTourController.isActive, voiceState == .idle else { return }
+
+        transientHideTask?.cancel()
+        transientHideTask = nil
+        if !shouldShowPersistentOverlay && !isOverlayVisible {
+            overlayWindowManager.hasShownOverlayBefore = true
+            overlayWindowManager.showOverlay(onScreens: NSScreen.screens, companionManager: self)
+            isOverlayVisible = overlayWindowManager.isShowingOverlay()
+        }
+
+        showOnboardingTourBubble(text: text)
+
+        jobAnnouncementBubbleHideTask?.cancel()
+        jobAnnouncementBubbleHideTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: self.jobAnnouncementBubbleVisibleNanoseconds)
+            guard !Task.isCancelled, !self.onboardingTourController.isActive else { return }
+            // Only hide if the bubble is still ours.
+            guard self.onboardingPromptText == text else { return }
+            await self.hideOnboardingTourBubble()
+            self.scheduleTransientHideIfNeeded()
+        }
     }
 
     private func bindVoiceStateObservation() {
@@ -1124,7 +1337,6 @@ final class CompanionManager: ObservableObject {
         HeyClickyWakeWordListener.shared.onWakeDetected = { [weak self] trailingText in
             guard let self else { return }
             guard !self.buddyDictationManager.isDictationInProgress else { return }
-            guard !self.showOnboardingVideo else { return }
 
             self.markBusy()
             self.transientHideTask?.cancel()
@@ -1252,10 +1464,64 @@ final class CompanionManager: ObservableObject {
         )
     }
 
+    /// Buttons and guided clicks inside a drawing call back here ({ask}, {handOff}, target()/hover()).
+    private func bindDrawingEngineCallbacks() {
+        let annotationManager = ScreenAnnotationManager.shared
+        annotationManager.onAskFollowUp = { [weak self] followUpPrompt in
+            // Model-authored words: any handoff tag in the reply to this turn must ask first.
+            let cappedPrompt = String(followUpPrompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+            self?.submitTextPrompt(cappedPrompt, isFromDrawingButton: true)
+        }
+        annotationManager.onHandOffRequested = { [weak self] handOffPayload in
+            guard let self else { return }
+            let task = ClickyHandoffTagParser.cleaned(handOffPayload["task"] as? String ?? "")
+            guard !task.isEmpty else { return }
+            let requestedSlug = (handOffPayload["clicky"] as? String).flatMap { slug in
+                ClickyRoster.shared.clicky(forSlug: slug) != nil ? slug : nil
+            }
+            self.handleHandoffRequest(
+                ClickyHandoffRequest(kind: .agent, task: task, clickySlug: requestedSlug),
+                assistantMessageID: self.chatMessages.last(where: { $0.role == "assistant" && $0.drawingID != nil })?.id
+                    ?? self.chatMessages.last(where: { $0.role == "assistant" })?.id,
+                source: .drawingButton
+            )
+        }
+        annotationManager.onGuidedTargetCompleted = { [weak self] completedTarget in
+            guard let self else { return }
+            ClickySoundEffectPlayer.shared.play(.ding)
+            if let lastAssistantMessageID = self.chatMessages.last(where: { $0.role == "assistant" })?.id {
+                let targetLabel = (completedTarget.label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let ledgerLine = targetLabel.isEmpty
+                    ? String(localized: "Clicked the highlighted spot")
+                    : String(localized: "Clicked \(targetLabel)")
+                self.appendActivity(to: lastAssistantMessageID, [ledgerLine])
+            }
+        }
+    }
+
     private func bindRealtimeVoiceController() {
         RealtimeVoiceController.shared.turnBasedHandler = { [weak self] userText in
             guard let self else { return "" }
             return try await self.executeTurnBasedVoiceTurn(userText: userText)
+        }
+        RealtimeVoiceController.shared.instructionsProvider = { [weak self] baseInstructions in
+            self?.realtimeVoiceInstructions(baseInstructions: baseInstructions) ?? baseInstructions
+        }
+        RealtimeVoiceController.shared.backgroundJobHandler = { [weak self] task in
+            guard let self else { return "Error: Clicky isn't ready." }
+            let outcome = self.handleHandoffRequest(
+                ClickyHandoffRequest(kind: .agent, task: ClickyHandoffTagParser.cleaned(task)),
+                assistantMessageID: nil,
+                source: .realtimeTool
+            )
+            switch outcome {
+            case .started:
+                return "The job started. Tell the user briefly; they'll see it in the notch."
+            case .awaitingConfirmation:
+                return "The job is waiting for the user's OK on a card in the notch. Tell them to press Start job."
+            case .rejected(let reason):
+                return "The job was not started: \(reason) Tell the user briefly."
+            }
         }
 
         realtimeStateCancellable = RealtimeVoiceController.shared.$state
@@ -1304,6 +1570,12 @@ final class CompanionManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 guard let self else { return }
+                // Tour first, and with the voice state from BEFORE Escape clears it,
+                // so Escape only skips the tour when Clicky was not busy.
+                self.onboardingTourController.handleSlotEvent(
+                    event,
+                    voiceStateWasIdleBeforeEvent: self.voiceState == .idle
+                )
                 switch event {
                 case .triggered(let slot) where slot == .textTrigger:
                     self.markBusy()
@@ -1330,6 +1602,7 @@ final class CompanionManager: ObservableObject {
 
     private func interruptAllActiveOperations() {
         markBusy()
+        ClickyRegionCaptureController.shared.cancelRegionVoiceHoldIfActive()
         pendingKeyboardShortcutStartTask?.cancel()
         pendingKeyboardShortcutStartTask = nil
 
@@ -1357,15 +1630,32 @@ final class CompanionManager: ObservableObject {
         scheduleTransientHideIfNeeded()
     }
 
+    // MARK: - External Triggers (notch press-and-hold, region capture bar)
+
+    /// Same as holding / releasing the voice shortcut.
+    func handleExternalVoiceHold(isPressed: Bool) {
+        handleShortcutTransition(isPressed ? .pressed : .released)
+    }
+
+    /// Same as the text-mode shortcut: opens the notch chat to type.
+    func openTextModeFromExternalTrigger() {
+        markBusy()
+        NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
+        ClickySoundEffectPlayer.shared.play(.clickyTextOpen)
+        NotchWindowManager.shared.showNotchPeek(tab: .chat)
+    }
+
     private func handleShortcutTransition(_ transition: BuddyPushToTalkShortcut.ShortcutTransition) {
         switch transition {
         case .pressed:
             guard !buddyDictationManager.isDictationInProgress else { return }
-            guard !showOnboardingVideo else { return }
 
             markBusy()
             transientHideTask?.cancel()
             transientHideTask = nil
+            // A pending job-bubble hide must not fire mid-turn and hide the overlay under the user.
+            jobAnnouncementBubbleHideTask?.cancel()
+            jobAnnouncementBubbleHideTask = nil
 
             if !shouldShowPersistentOverlay && !isOverlayVisible {
                 overlayWindowManager.hasShownOverlayBefore = true
@@ -1381,7 +1671,8 @@ final class CompanionManager: ObservableObject {
             RealtimeVoiceController.shared.interruptAssistantSpeech()
             clearDetectedElementLocation()
 
-            if showOnboardingPrompt {
+            // During the tour the bubble carries the current instruction, so keep it.
+            if showOnboardingPrompt && !onboardingTourController.isActive {
                 withAnimation(.easeOut(duration: 0.3)) {
                     onboardingPromptOpacity = 0.0
                 }
@@ -1441,42 +1732,43 @@ final class CompanionManager: ObservableObject {
 
     // MARK: - Companion Prompts
 
-    private static let companionVoiceResponseSystemPrompt = """
-    you're clicky, a friendly always-on companion that lives in the user's menu bar. the user just spoke to you via push-to-talk and you can see their screen(s). your reply will be spoken aloud via text-to-speech, so write the way you'd actually talk. this is an ongoing conversation — you remember everything they've said before.
+    // Voice/text system prompts live in Companion/ClickyCompanionSystemPrompts.swift.
 
-    rules:
-    - default to one or two sentences. be direct and dense. BUT if the user asks you to explain more, go deeper, or elaborate, then go all out — give a thorough, detailed explanation with no length limit.
-    - all lowercase, casual, warm. no emojis.
-    - write for the ear, not the eye. short sentences. no lists, bullet points, markdown, or formatting — just natural speech.
-    - don't use abbreviations or symbols that sound weird read aloud. write "for example" not "e.g.", spell out small numbers.
-    - if the user's question relates to what's on their screen or open document, reference specific things you see.
-    - if the screenshot doesn't seem relevant to their question, just answer the question directly.
-    - you can help with anything — coding, writing, general knowledge, brainstorming.
-    - never say "simply" or "just".
-    - don't read out code verbatim. describe what the code does or what needs to change conversationally.
-    - focus on giving a thorough, useful explanation. don't end with simple yes/no questions like "want me to explain more?" or "should i show you?" — those are dead ends that force the user to just say yes.
-    - instead, when it fits naturally, end by planting a seed — mention something bigger or more ambitious they could try, a related concept that goes deeper, or a next-level technique that builds on what you just explained. make it something worth coming back for, not a question they'd just nod to. it's okay to not end with anything extra if the answer is complete on its own.
-    - if you receive multiple screen images, the one labeled "primary focus" is where the cursor is — prioritize that one but reference others if relevant.
+    static let currentDrawingProgramCharacterLimit = 4000
 
-    element pointing:
-    you have a small cursor that can fly to and point at things on screen. use it whenever pointing would genuinely help the user — if they're asking how to do something, looking for a menu, trying to find a button, or need help navigating an app, point at the relevant element. err on the side of pointing rather than not pointing, because it makes your help way more useful and concrete.
+    /// What Clicky has drawn on screen right now, so it can talk about it, change it or redraw it.
+    static func currentDrawingPromptBlock() -> String? {
+        // The overlay window number is only non-nil while the drawing is active AND its panel is visible,
+        // so a wiped or dismissed drawing is never reported as "still there".
+        guard ScreenAnnotationManager.shared.drawingOverlayWindowNumber != nil,
+              let drawingSummary = ScreenAnnotationManager.shared.currentDrawingSummary else { return nil }
+        let program = String(drawingSummary.code.prefix(currentDrawingProgramCharacterLimit))
+        return """
+        <current_drawing>
+        You already drew "\(drawingSummary.title)" on the user's screen and it is still there (it is visible in the screenshot). Its program:
+        \(program)
+        To change it, draw again: startOver() first to replace it, or add to it. If the user says they can't see it or asks again, draw it again from scratch with startOver().
+        </current_drawing>
+        """
+    }
 
-    don't point at things when it would be pointless — like if the user asks a general knowledge question, or the conversation has nothing to do with what's on screen, or you'd just be pointing at something obvious they're already looking at. but if there's a specific UI element, menu, button, or area on screen that's relevant to what you're helping with, point at it.
+    /// Realtime voice instructions: spoken style, memory, skills and abilities as tools (no tags, they would be heard).
+    func realtimeVoiceInstructions(baseInstructions: String) -> String {
+        var sections = [baseInstructions]
+        if let userMemoryBlock = UserMemoryStore.shared.formattedUserMemoryPromptBlock() {
+            sections.append(userMemoryBlock)
+        }
+        if let activeSkillsBlock = ClickySkillStore.shared.formattedActiveSkillsPromptBlock() {
+            sections.append(activeSkillsBlock)
+        }
+        let capabilitySections = ClickyCompanionCapabilities.promptSections(for: .realtime)
+        if !capabilitySections.isEmpty {
+            sections.append(capabilitySections)
+        }
+        return sections.joined(separator: "\n\n")
+    }
 
-    when you point, append a coordinate tag at the very end of your response, AFTER your spoken text. the screenshot images are labeled with their pixel dimensions. use those dimensions as the coordinate space. the origin (0,0) is the top-left corner of the image. x increases rightward, y increases downward.
-
-    format: [POINT:x,y:label] where x,y are integer pixel coordinates in the screenshot's coordinate space, and label is a short 1-3 word description of the element (like "search bar" or "save button"). if the element is on the cursor's screen you can omit the screen number. if the element is on a DIFFERENT screen, append :screenN where N is the screen number from the image label (e.g. :screen2). this is important — without the screen number, the cursor will point at the wrong place.
-
-    if pointing wouldn't help, append [POINT:none].
-    """
-
-    private static let companionTextResponseSystemPrompt = """
-    You are HeyClicky, a sharp, helpful macOS desktop companion. You can see the user's screen(s) and active document context when available, and you remember prior exchanges and standing preferences.
-
-    Be direct, clear, and practical. Use clean Markdown when helpful for structured explanations or code. If pointing at a specific on-screen UI element helps, you may append `[POINT:x,y:label]` (or `[POINT:x,y:label:screenN]`) at the end of your reply.
-    """
-
-    private func buildSystemPrompt(
+    func buildSystemPrompt(
         basePrompt: String,
         userInput: String,
         clickySlug: String? = nil
@@ -1492,6 +1784,14 @@ final class CompanionManager: ObservableObject {
 
         if let userMemoryBlock = UserMemoryStore.shared.formattedUserMemoryPromptBlock() {
             sections.append(userMemoryBlock)
+        }
+
+        if let activeSkillsBlock = ClickySkillStore.shared.formattedActiveSkillsPromptBlock() {
+            sections.append(activeSkillsBlock)
+        }
+
+        if let currentDrawingBlock = Self.currentDrawingPromptBlock() {
+            sections.append(currentDrawingBlock)
         }
 
         if let howTosBlock = ClickyLearnedHowTos.shared.formattedPromptBlock(forPrompt: userInput) {
@@ -1540,18 +1840,29 @@ final class CompanionManager: ObservableObject {
         guard !trimmed.isEmpty else { return "" }
 
         UserMemoryStore.shared.extractAndPersistPreferences(fromUserText: trimmed)
+        let voiceAssistantMessageID = beginVoiceChatTurn(transcript: trimmed)
+        do {
         let docContext = await ActiveDocumentReader.shared.captureActiveContext()
         activeDocumentContext = docContext
         activeDocumentNotice = ActiveDocumentReader.shared.activeDocumentAccessNotice
 
         let screenCaptures = (try? await CompanionScreenCaptureUtility.captureAllScreensAsJPEG()) ?? []
+        let queuedRegionImages = ClickyRegionCaptureController.shared.consumeQueuedRegionsAsLabeledImages()
         let labeledImages = screenCaptures.map { capture in
             let dimensionInfo = " (image dimensions: \(capture.screenshotWidthInPixels)x\(capture.screenshotHeightInPixels) pixels)"
             return (data: capture.imageData, label: capture.label + dimensionInfo)
-        }
+        } + queuedRegionImages
+        appendActivity(
+            to: voiceAssistantMessageID,
+            ClickyChatActivityLedger.eventsForTurn(
+                tookScreenshot: !screenCaptures.isEmpty,
+                attachedRegionImageCount: queuedRegionImages.count,
+                readDocumentText: !(docContext?.extractedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            )
+        )
 
         let systemPrompt = buildSystemPrompt(
-            basePrompt: Self.companionVoiceResponseSystemPrompt,
+            basePrompt: ClickyCompanionSystemPrompts.voiceSystemPrompt(),
             userInput: trimmed
         )
         let enrichedUserPrompt = Self.composeUserPrompt(
@@ -1579,14 +1890,28 @@ final class CompanionManager: ObservableObject {
 
         if ScreenAnnotationManager.extractDrawingCode(from: fullResponseText, allowUnclosedFence: false) != nil {
             _ = ScreenAnnotationManager.shared.feedStreamingResponse(fullResponseText, done: true)
+            recordFinishedDrawing(userPrompt: trimmed)
         }
 
         let textWithoutDrawingBlocks = Self.stripDrawingCodeBlocks(from: fullResponseText)
-        let parseResult = Self.parsePointingCoordinates(from: textWithoutDrawingBlocks)
+        let handoffParse = ClickyHandoffTagParser.parse(from: textWithoutDrawingBlocks)
+        let parseResult = Self.parsePointingCoordinates(from: handoffParse.text)
         handlePointingResult(parseResult, screenCaptures: screenCaptures)
-        appendConversationExchange(userTranscript: trimmed, assistantResponse: parseResult.spokenText)
+        appendConversationExchange(
+            userTranscript: trimmed,
+            assistantResponse: parseResult.spokenText,
+            responseIncludedDrawing: ScreenAnnotationManager.extractDrawingCode(from: fullResponseText, allowUnclosedFence: false) != nil
+        )
+        finishVoiceChatTurn(assistantMessageID: voiceAssistantMessageID, spokenText: parseResult.spokenText)
+        if let handoffRequest = handoffParse.request {
+            handleHandoffRequest(handoffRequest, assistantMessageID: voiceAssistantMessageID, source: .replyTag(userText: trimmed))
+        }
 
         return parseResult.spokenText
+        } catch {
+            removeEmptyAssistantPlaceholder(id: voiceAssistantMessageID)
+            throw error
+        }
     }
 
     private func sendTranscriptToClaudeWithScreenshot(transcript: String) {
@@ -1600,6 +1925,7 @@ final class CompanionManager: ObservableObject {
         markBusy()
         lastErrorMessage = nil
         UserMemoryStore.shared.extractAndPersistPreferences(fromUserText: trimmedTranscript)
+        let voiceAssistantMessageID = beginVoiceChatTurn(transcript: trimmedTranscript)
 
         currentResponseTask = Task { [weak self] in
             guard let self else { return }
@@ -1611,15 +1937,27 @@ final class CompanionManager: ObservableObject {
                 self.activeDocumentNotice = ActiveDocumentReader.shared.activeDocumentAccessNotice
 
                 let screenCaptures = try await CompanionScreenCaptureUtility.captureAllScreensAsJPEG()
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    self.removeEmptyAssistantPlaceholder(id: voiceAssistantMessageID)
+                    return
+                }
 
+                let queuedRegionImages = ClickyRegionCaptureController.shared.consumeQueuedRegionsAsLabeledImages()
                 let labeledImages = screenCaptures.map { capture in
                     let dimensionInfo = " (image dimensions: \(capture.screenshotWidthInPixels)x\(capture.screenshotHeightInPixels) pixels)"
                     return (data: capture.imageData, label: capture.label + dimensionInfo)
-                }
+                } + queuedRegionImages
+                self.appendActivity(
+                    to: voiceAssistantMessageID,
+                    ClickyChatActivityLedger.eventsForTurn(
+                        tookScreenshot: !screenCaptures.isEmpty,
+                        attachedRegionImageCount: queuedRegionImages.count,
+                        readDocumentText: !(docContext?.extractedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                    )
+                )
 
                 let systemPrompt = self.buildSystemPrompt(
-                    basePrompt: Self.companionVoiceResponseSystemPrompt,
+                    basePrompt: ClickyCompanionSystemPrompts.voiceSystemPrompt(),
                     userInput: trimmedTranscript
                 )
                 let enrichedUserPrompt = Self.composeUserPrompt(
@@ -1648,14 +1986,19 @@ final class CompanionManager: ObservableObject {
                     }
                 )
 
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    self.removeEmptyAssistantPlaceholder(id: voiceAssistantMessageID)
+                    return
+                }
 
                 if hasDetectedDrawingBlock || ScreenAnnotationManager.extractDrawingCode(from: fullResponseText, allowUnclosedFence: false) != nil {
                     _ = ScreenAnnotationManager.shared.feedStreamingResponse(fullResponseText, done: true)
+                    self.recordFinishedDrawing(userPrompt: trimmedTranscript)
                 }
 
                 let textWithoutDrawingBlocks = Self.stripDrawingCodeBlocks(from: fullResponseText)
-                let parseResult = Self.parsePointingCoordinates(from: textWithoutDrawingBlocks)
+                let handoffParse = ClickyHandoffTagParser.parse(from: textWithoutDrawingBlocks)
+                let parseResult = Self.parsePointingCoordinates(from: handoffParse.text)
                 let spokenText = parseResult.spokenText
 
                 if parseResult.coordinate != nil {
@@ -1665,8 +2008,18 @@ final class CompanionManager: ObservableObject {
 
                 self.appendConversationExchange(
                     userTranscript: trimmedTranscript,
-                    assistantResponse: spokenText
+                    assistantResponse: spokenText,
+                    responseIncludedDrawing: hasDetectedDrawingBlock
+                        || ScreenAnnotationManager.extractDrawingCode(from: fullResponseText, allowUnclosedFence: false) != nil
                 )
+                self.finishVoiceChatTurn(assistantMessageID: voiceAssistantMessageID, spokenText: spokenText)
+                if let handoffRequest = handoffParse.request {
+                    self.handleHandoffRequest(
+                        handoffRequest,
+                        assistantMessageID: voiceAssistantMessageID,
+                        source: .replyTag(userText: trimmedTranscript)
+                    )
+                }
 
                 ClickySoundEffectPlayer.shared.play(.clickyTextReceive)
                 ClickyAnalytics.trackAIResponseReceived(response: spokenText)
@@ -1676,9 +2029,11 @@ final class CompanionManager: ObservableObject {
                 }
             } catch is CancellationError {
                 // Interrupted by user speaking again or Escape
+                self.removeEmptyAssistantPlaceholder(id: voiceAssistantMessageID)
             } catch {
                 let errorMessage = Self.formatProviderError(error)
                 self.lastErrorMessage = errorMessage
+                self.updateAssistantMessage(id: voiceAssistantMessageID, text: errorMessage)
                 ClickySoundEffectPlayer.shared.play(.nope)
                 ClickyAnalytics.trackResponseError(error: errorMessage)
                 print("⚠️ Companion response error: \(errorMessage)")
@@ -1754,15 +2109,66 @@ final class CompanionManager: ObservableObject {
         }
     }
 
-    private func appendConversationExchange(userTranscript: String, assistantResponse: String) {
+    private func appendConversationExchange(userTranscript: String, assistantResponse: String, responseIncludedDrawing: Bool) {
         conversationHistory.append((
             userTranscript: userTranscript,
-            assistantResponse: assistantResponse
+            assistantResponse: Self.conversationHistoryAssistantText(
+                spokenText: assistantResponse,
+                responseIncludedDrawing: responseIncludedDrawing
+            )
         ))
         if conversationHistory.count > 10 {
             conversationHistory.removeFirst(conversationHistory.count - 10)
         }
         print("🧠 Conversation history: \(conversationHistory.count) exchanges")
+    }
+
+    /// Drawing code is stripped from what history stores, so without a note the model only ever sees its
+    /// past replies as plain talk, copies that, and stops drawing after a few turns. The note keeps it drawing.
+    nonisolated static func conversationHistoryAssistantText(spokenText: String, responseIncludedDrawing: Bool) -> String {
+        guard responseIncludedDrawing else { return spokenText }
+        return "[I drew this explanation on the user's screen.]\n" + spokenText
+    }
+
+    /// Adds the user's transcript and an empty assistant row (shown as typing dots) for a voice turn.
+    /// Resets `lastRecordedDrawingID` so a drawing from an earlier turn is never attached to this one.
+    private func beginVoiceChatTurn(transcript: String) -> UUID {
+        lastRecordedDrawingID = nil
+        let assistantMessageID = UUID()
+        chatMessages.append(ClickyChatMessage(role: "user", text: transcript))
+        chatMessages.append(ClickyChatMessage(id: assistantMessageID, role: "assistant", text: ""))
+        return assistantMessageID
+    }
+
+    /// Fills the assistant row of a voice turn and attaches the drawing recorded during this turn, if any.
+    private func finishVoiceChatTurn(assistantMessageID: UUID, spokenText: String) {
+        guard let index = chatMessages.firstIndex(where: { $0.id == assistantMessageID }) else { return }
+        let drawingID = lastRecordedDrawingID
+        chatMessages[index].text = ClickyChatActivityLedger.displayReply(spokenText: spokenText, hasDrawing: drawingID != nil)
+        if let drawingID {
+            chatMessages[index].drawingID = drawingID
+            appendActivity(to: assistantMessageID, [ClickyChatActivityLedger.savedDrawing])
+        }
+        if chatMessages[index].text.isEmpty {
+            chatMessages.remove(at: index)
+        }
+    }
+
+    func appendActivity(to messageID: UUID, _ events: [String]) {
+        guard !events.isEmpty,
+              let index = chatMessages.firstIndex(where: { $0.id == messageID }) else { return }
+        chatMessages[index].activity = ClickyChatActivityLedger.merged(chatMessages[index].activity, with: events)
+    }
+
+    /// Chat "remove drawing" button: detaches the drawing from the row only; it stays in Home → Drawings.
+    func detachDrawingFromChat(messageID: UUID) {
+        guard let index = chatMessages.firstIndex(where: { $0.id == messageID }) else { return }
+        chatMessages[index].drawingID = nil
+    }
+
+    /// Stop button in the chat while a turn runs. Same as pressing Escape.
+    func stopCurrentTurnFromChat() {
+        interruptAllActiveOperations()
     }
 
     private func updateAssistantMessage(id: UUID, text: String) {
@@ -1803,6 +2209,8 @@ final class CompanionManager: ObservableObject {
 
     private func scheduleTransientHideIfNeeded() {
         guard !shouldShowPersistentOverlay && isOverlayVisible else { return }
+        // The tour needs the overlay (cursor + bubble) to stay up; it re-schedules the hide when it ends.
+        guard !isOnboardingActive else { return }
 
         transientHideTask?.cancel()
         transientHideTask = Task { [weak self] in
@@ -1920,7 +2328,10 @@ final class CompanionManager: ObservableObject {
 
     static func stripDrawingCodeBlocksAndPointTags(from responseText: String) -> String {
         let withoutDrawing = stripDrawingCodeBlocks(from: responseText)
-        return parsePointingCoordinates(from: withoutDrawing).spokenText
+        let withoutHandoffTags = ClickyHandoffTagParser.hidingPartialTag(
+            in: ClickyHandoffTagParser.parse(from: withoutDrawing).text
+        )
+        return parsePointingCoordinates(from: withoutHandoffTags).spokenText
     }
 
     static func parsePointingCoordinates(from responseText: String) -> PointingParseResult {
@@ -1980,187 +2391,77 @@ final class CompanionManager: ObservableObject {
         return false
     }
 
-    // MARK: - Onboarding Video
+    // MARK: - Onboarding Tour
 
-    func setupOnboardingVideo() {
-        guard let videoURL = URL(string: "https://stream.mux.com/e5jB8UuSrtFABVnTHCR7k3sIsmcUHCyhtLu1tzqLlfs.m3u8") else { return }
+    /// Starts the interactive tour (called when the welcome animation ends, or by the fallback timer).
+    func startOnboardingTour() {
+        onboardingTourFallbackStartTask?.cancel()
+        onboardingTourFallbackStartTask = nil
+        guard !onboardingTourController.isActive else { return }
+        onboardingTourController.start(companionManager: self)
+    }
 
-        let player = AVPlayer(url: videoURL)
-        player.isMuted = false
-        player.volume = 0.0
-        self.onboardingVideoPlayer = player
-        self.showOnboardingVideo = true
-        self.onboardingVideoOpacity = 0.0
-
-        player.play()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            guard let self else { return }
-            self.onboardingVideoOpacity = 1.0
-            self.fadeInVideoAudio(player: player, targetVolume: 1.0, duration: 2.0)
-        }
-
-        let demoTriggerTime = CMTime(seconds: 40, preferredTimescale: 600)
-        onboardingDemoTimeObserver = player.addBoundaryTimeObserver(
-            forTimes: [NSValue(time: demoTriggerTime)],
-            queue: .main
-        ) { [weak self] in
-            Task { @MainActor [weak self] in
-                ClickyAnalytics.trackOnboardingDemoTriggered()
-                self?.performOnboardingDemoInteraction()
-            }
-        }
-
-        onboardingVideoEndObserver = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.didPlayToEndTimeNotification,
-            object: player.currentItem,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                ClickyAnalytics.trackOnboardingVideoCompleted()
-                self.onboardingVideoOpacity = 0.0
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                    self?.tearDownOnboardingVideo()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                        self?.startOnboardingPromptStream()
-                    }
-                }
-            }
+    /// If the overlay's welcome animation never calls `startOnboardingTour()`
+    /// (e.g. overlay hidden by a preference), start the tour 7 seconds after onboarding is triggered.
+    /// 7s (not 3s) because the welcome animation takes ~5s; startOnboardingTour() is a no-op if the tour is already active.
+    private func scheduleOnboardingTourFallbackStart() {
+        onboardingTourFallbackStartTask?.cancel()
+        onboardingTourFallbackStartTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            guard !Task.isCancelled, let self, !self.onboardingTourController.isActive else { return }
+            self.startOnboardingTour()
         }
     }
 
-    func tearDownOnboardingVideo() {
-        showOnboardingVideo = false
-        onboardingPromptStreamTask?.cancel()
-        onboardingPromptStreamTask = nil
-        if let timeObserver = onboardingDemoTimeObserver {
-            onboardingVideoPlayer?.removeTimeObserver(timeObserver)
-            onboardingDemoTimeObserver = nil
-        }
-        onboardingVideoPlayer?.pause()
-        onboardingVideoPlayer = nil
-        if let observer = onboardingVideoEndObserver {
-            NotificationCenter.default.removeObserver(observer)
-            onboardingVideoEndObserver = nil
-        }
-    }
-
-    private func startOnboardingPromptStream() {
-        let message = "press control + option and introduce yourself"
-        onboardingPromptText = ""
+    func showOnboardingTourBubble(text: String) {
+        onboardingPromptText = text
         showOnboardingPrompt = true
-        onboardingPromptOpacity = 0.0
-
-        withAnimation(.easeIn(duration: 0.4)) {
+        withAnimation(.easeIn(duration: 0.3)) {
             onboardingPromptOpacity = 1.0
         }
+    }
 
-        onboardingPromptStreamTask?.cancel()
-        onboardingPromptStreamTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            for character in message {
-                guard !Task.isCancelled else { return }
-                self.onboardingPromptText.append(character)
-                try? await Task.sleep(nanoseconds: 30_000_000)
-            }
+    func hideOnboardingTourBubble() async {
+        withAnimation(.easeOut(duration: 0.3)) {
+            onboardingPromptOpacity = 0.0
+        }
+        try? await Task.sleep(nanoseconds: 350_000_000)
+        showOnboardingPrompt = false
+        onboardingPromptText = ""
+    }
 
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            guard !Task.isCancelled, self.showOnboardingPrompt else { return }
-            withAnimation(.easeOut(duration: 0.3)) {
-                self.onboardingPromptOpacity = 0.0
-            }
-            try? await Task.sleep(nanoseconds: 350_000_000)
+    /// Called by the tour once its farewell bubble is gone, so a transient overlay can hide again.
+    func onboardingTourDidFinish() {
+        scheduleTransientHideIfNeeded()
+        // Job lines that queued up during the tour are spoken now.
+        flushPendingJobAnnouncementLinesIfPossible()
+    }
+
+    /// True while the tour's own line is being spoken (voiceState == .responding because of it).
+    private(set) var isSpeakingOnboardingTourLine = false
+
+    /// Returns once no TTS (ElevenLabs, realtime voice, or fallback synthesizer) is playing.
+    func waitForSpeechPlaybackToFinish() async {
+        while elevenLabsTTSClient.isPlaying
+            || RealtimeVoiceController.shared.state == .speaking
+            || fallbackSpeechSynthesizer.isSpeaking {
+            try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
-            self.showOnboardingPrompt = false
-            self.onboardingPromptText = ""
         }
     }
 
-    private func fadeInVideoAudio(player: AVPlayer, targetVolume: Float, duration: Double) {
-        Task { @MainActor in
-            let steps = 20
-            let stepNanoseconds = UInt64((duration / Double(steps)) * 1_000_000_000)
-            let volumeIncrement = (targetVolume - player.volume) / Float(steps)
-
-            for _ in 0..<steps {
-                try? await Task.sleep(nanoseconds: stepNanoseconds)
-                guard !Task.isCancelled else { return }
-                player.volume = min(targetVolume, player.volume + volumeIncrement)
-            }
-            player.volume = targetVolume
-        }
-    }
-
-    // MARK: - Onboarding Demo Interaction
-
-    private static let onboardingDemoSystemPrompt = """
-    you're clicky, a small cursor buddy living on the user's screen. you're showing off during onboarding — look at their screen and find ONE specific, concrete thing to point at. pick something with a clear name or identity: a specific app icon (say its name), a specific word or phrase of text you can read, a specific filename, a specific button label, a specific tab title, a specific image you can describe. do NOT point at vague things like "a window" or "some text" — be specific about exactly what you see.
-
-    make a short quirky 3-6 word observation about the specific thing you picked — something fun, playful, or curious that shows you actually read/recognized it. no emojis ever. NEVER quote or repeat text you see on screen — just react to it. keep it to 6 words max, no exceptions.
-
-    CRITICAL COORDINATE RULE: you MUST only pick elements near the CENTER of the screen. your x coordinate must be between 20%-80% of the image width. your y coordinate must be between 20%-80% of the image height. do NOT pick anything in the top 20%, bottom 20%, left 20%, or right 20% of the screen. no menu bar items, no dock icons, no sidebar items, no items near any edge. only things clearly in the middle area of the screen. if the only interesting things are near the edges, pick something boring in the center instead.
-
-    respond with ONLY your short comment followed by the coordinate tag. nothing else. all lowercase.
-
-    format: your comment [POINT:x,y:label]
-
-    the screenshot images are labeled with their pixel dimensions. use those dimensions as the coordinate space. origin (0,0) is top-left. x increases rightward, y increases downward.
-    """
-
-    func performOnboardingDemoInteraction() {
-        guard voiceState == .idle || voiceState == .responding else { return }
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let screenCaptures = try await CompanionScreenCaptureUtility.captureAllScreensAsJPEG()
-
-                guard let cursorScreenCapture = screenCaptures.first(where: { $0.isCursorScreen }) else {
-                    print("🎯 Onboarding demo: no cursor screen found")
-                    return
-                }
-
-                let dimensionInfo = " (image dimensions: \(cursorScreenCapture.screenshotWidthInPixels)x\(cursorScreenCapture.screenshotHeightInPixels) pixels)"
-                let labeledImages = [(data: cursorScreenCapture.imageData, label: cursorScreenCapture.label + dimensionInfo)]
-
-                let (fullResponseText, _) = try await self.unifiedLLMClient.analyzeImageStreaming(
-                    images: labeledImages,
-                    systemPrompt: Self.onboardingDemoSystemPrompt,
-                    userPrompt: "look around my screen and find something interesting to point at",
-                    onTextChunk: { _ in }
-                )
-
-                let parseResult = Self.parsePointingCoordinates(from: fullResponseText)
-
-                guard let pointCoordinate = parseResult.coordinate else {
-                    print("🎯 Onboarding demo: no element to point at")
-                    return
-                }
-
-                let screenshotWidth = CGFloat(cursorScreenCapture.screenshotWidthInPixels)
-                let screenshotHeight = CGFloat(cursorScreenCapture.screenshotHeightInPixels)
-                let displayWidth = CGFloat(cursorScreenCapture.displayWidthInPoints)
-                let displayHeight = CGFloat(cursorScreenCapture.displayHeightInPoints)
-                let displayFrame = cursorScreenCapture.displayFrame
-
-                let clampedX = max(0, min(pointCoordinate.x, screenshotWidth))
-                let clampedY = max(0, min(pointCoordinate.y, screenshotHeight))
-                let displayLocalX = clampedX * (displayWidth / screenshotWidth)
-                let displayLocalY = clampedY * (displayHeight / screenshotHeight)
-                let appKitY = displayHeight - displayLocalY
-                let globalLocation = CGPoint(
-                    x: displayLocalX + displayFrame.origin.x,
-                    y: appKitY + displayFrame.origin.y
-                )
-
-                self.detectedElementBubbleText = parseResult.spokenText
-                self.detectedElementScreenLocation = globalLocation
-                self.detectedElementDisplayFrame = displayFrame
-                print("🎯 Onboarding demo: pointing at \"\(parseResult.elementLabel ?? "element")\" — \"\(parseResult.spokenText)\"")
-            } catch {
-                print("⚠️ Onboarding demo error: \(error)")
-            }
+    /// Speaks one tour line and returns when playback has finished.
+    /// `speakVoiceResponse` leaves `voiceState == .responding`, so reset it to idle afterwards
+    /// (only if the user has not started a new turn in the meantime).
+    func speakOnboardingTourLine(_ line: String) async {
+        // Lets the tour treat Esc during its own line as an immediate skip.
+        isSpeakingOnboardingTourLine = true
+        defer { isSpeakingOnboardingTourLine = false }
+        await speakVoiceResponse(line)
+        await waitForSpeechPlaybackToFinish()
+        guard !Task.isCancelled else { return }
+        if voiceState == .responding {
+            voiceState = .idle
         }
     }
 }

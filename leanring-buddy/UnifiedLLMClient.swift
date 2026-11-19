@@ -697,6 +697,8 @@ public final class UnifiedLLMClient {
                 continue
             }
 
+            if ClickySafetyFilterDetector.isAnthropicRefusal(obj) { throw ClickySafetyFilterError() }
+
             // Handle content_block_delta
             if let type = obj["type"] as? String, type == "content_block_delta",
                let delta = obj["delta"] as? [String: Any],
@@ -735,6 +737,12 @@ public final class UnifiedLLMClient {
             guard line.hasPrefix("data: ") else { continue }
             let jsonString = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
             if jsonString == "[DONE]" { break }
+
+            if let filterData = jsonString.data(using: .utf8),
+               let filterObject = try? JSONSerialization.jsonObject(with: filterData) as? [String: Any],
+               ClickySafetyFilterDetector.isOpenAIContentFilter(filterObject) {
+                throw ClickySafetyFilterError()
+            }
 
             guard let jsonData = jsonString.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
@@ -782,6 +790,7 @@ public final class UnifiedLLMClient {
                 continue
             }
             let responseObj = (obj["response"] as? [String: Any]) ?? obj
+            if ClickySafetyFilterDetector.isGeminiSafetyBlock(responseObj) { throw ClickySafetyFilterError() }
             guard let candidates = responseObj["candidates"] as? [[String: Any]],
                   let first = candidates.first,
                   let content = first["content"] as? [String: Any],

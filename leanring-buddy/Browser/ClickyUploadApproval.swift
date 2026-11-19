@@ -81,6 +81,8 @@ public final class ClickyUploadApproval: ObservableObject {
     private var turnDecisionsByTurnID: [String: UploadApprovalDecision] = [:]
     private var pendingContinuation: CheckedContinuation<UploadApprovalDecision, Never>?
     private var pendingRequestID: UUID?
+    /// Set when the user picks "Not now"; further upload requests auto-decline for 30 minutes.
+    private var notNowChosenAt: Date?
 
     private init() {}
 
@@ -89,13 +91,15 @@ public final class ClickyUploadApproval: ObservableObject {
     public func beginTurn(turnID: String, workspaceURL: URL?) {
         activeTurnID = turnID
         activeWorkspaceURL = workspaceURL
+        // A new turn is a new user intent, so an earlier "Not now" no longer applies.
+        notNowChosenAt = nil
     }
 
     public func endTurn(turnID: String? = nil) {
         let targetTurn = turnID ?? activeTurnID
         turnDecisionsByTurnID.removeValue(forKey: targetTurn)
         if pendingRequest != nil, targetTurn == activeTurnID {
-            resolvePending(.decline)
+            resolvePending(.decline, isUserChoice: false)
         }
     }
 
@@ -140,7 +144,7 @@ public final class ClickyUploadApproval: ObservableObject {
             return .invalidPath(path: resolvedPath, reason: "\(resolvedPath) is not a regular file; upload takes files.")
         }
         guard fileManager.isReadableFile(atPath: resolvedPath) else {
-            return .invalidPath(path: resolvedPath, reason: "HeyClicky can't read \(resolvedPath).")
+            return .invalidPath(path: resolvedPath, reason: "Clicky can't read \(resolvedPath).")
         }
 
         if let attributes = try? fileManager.attributesOfItem(atPath: resolvedPath),
@@ -356,6 +360,11 @@ public final class ClickyUploadApproval: ObservableObject {
             return .alwaysApprove
         }
 
+        // 2b. "Not now" blocks further requests for 30 minutes, without prompting
+        if ClickyNotNowGate.isBlocked(blockedAt: notNowChosenAt) {
+            return .decline
+        }
+
         // 3. Per-turn approval cache check
         if let cachedDecision = turnDecisionsByTurnID[activeTurnID] {
             return cachedDecision
@@ -368,7 +377,7 @@ public final class ClickyUploadApproval: ObservableObject {
 
         let displayFiles = externalFiles.isEmpty ? ["files from outside your job folder"] : externalFiles
         let displaySite = site.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "a website" : site
-        let displayTitle = jobTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "HeyClicky" : jobTitle
+        let displayTitle = jobTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Clicky" : jobTitle
 
         let request = UploadApprovalRequest(
             jobTitle: displayTitle,
@@ -389,7 +398,7 @@ public final class ClickyUploadApproval: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(Self.promptTimeoutSeconds * 1_000_000_000))
                 guard let self else { return }
                 if self.pendingRequestID == requestID {
-                    self.resolvePending(.decline)
+                    self.resolvePending(.decline, isUserChoice: false)
                 }
             }
         }
@@ -409,7 +418,10 @@ public final class ClickyUploadApproval: ObservableObject {
         return decision
     }
 
-    public func resolvePending(_ decision: UploadApprovalDecision) {
+    public func resolvePending(_ decision: UploadApprovalDecision, isUserChoice: Bool = true) {
+        if isUserChoice && decision == .decline {
+            notNowChosenAt = Date()
+        }
         pendingRequest = nil
         isAsking = false
         pendingRequestID = nil
@@ -451,7 +463,7 @@ public final class ClickyUploadApproval: ObservableObject {
 
         if pendingRequest != nil {
             return ClickyMCPToolResult.error(
-                "HeyClicky is asking the user something else right now. Try this again in a moment.",
+                "Clicky is asking the user something else right now. Try this again in a moment.",
                 extra: ["decision": "busy", "allowed": false]
             )
         }
@@ -464,6 +476,11 @@ public final class ClickyUploadApproval: ObservableObject {
                     "allowed": true,
                     "decision": decision.rawValue
                 ]
+            )
+        } else if ClickyNotNowGate.isBlocked(blockedAt: notNowChosenAt) {
+            return ClickyMCPToolResult.error(
+                ClickyNotNowGate.agentDeclineMessage,
+                extra: ["allowed": false, "decision": decision.rawValue]
             )
         } else {
             let fileSummary = rawFiles.isEmpty ? "files from outside your job folder" : rawFiles.joined(separator: ", ")

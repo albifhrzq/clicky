@@ -8,7 +8,6 @@
 //
 
 import AppKit
-import AVFoundation
 import Combine
 import Foundation
 import QuartzCore
@@ -110,6 +109,7 @@ struct BlueCursorView: View {
     let isFirstAppearance: Bool
     @ObservedObject var companionManager: CompanionManager
     @ObservedObject private var configuration = ClickyConfiguration.shared
+    @ObservedObject private var screenAnnotationManager = ScreenAnnotationManager.shared
 
     @State private var cursorPosition: CGPoint
     @State private var isCursorOnThisScreen: Bool
@@ -127,7 +127,9 @@ struct BlueCursorView: View {
         _cursorPosition = State(initialValue: CGPoint(x: localX + 35, y: localY + 25))
         _isCursorOnThisScreen = State(initialValue: screenFrame.contains(mouseLocation))
     }
-    @State private var timer: Timer?
+    /// Mouse-moved event monitors (global + local). Replaces the old 60 Hz polling timer so an
+    /// idle cursor costs nothing. Removed in onDisappear.
+    @State private var mouseMovementMonitors: [Any] = []
     @State private var welcomeText: String = ""
     @State private var showWelcome: Bool = true
     @State private var bubbleSize: CGSize = .zero
@@ -169,11 +171,6 @@ struct BlueCursorView: View {
     /// Only during the return flight can cursor movement cancel the animation.
     @State private var isReturningToCursor: Bool = false
 
-    // MARK: - Onboarding Video Layout
-
-    private let onboardingVideoPlayerWidth: CGFloat = 330
-    private let onboardingVideoPlayerHeight: CGFloat = 186
-
     private let fullWelcomeMessage = "hey! i'm clicky"
 
     private let navigationPointerPhrases = [
@@ -194,7 +191,6 @@ struct BlueCursorView: View {
             && companionManager.voiceState == .idle
             && buddyNavigationMode == .followingCursor
             && (!showWelcome || welcomeText.isEmpty)
-            && !companionManager.showOnboardingVideo
             && !companionManager.showOnboardingPrompt
     }
 
@@ -202,6 +198,31 @@ struct BlueCursorView: View {
         ZStack {
             // Nearly transparent background (helps with compositing)
             Color.black.opacity(0.001)
+
+            // Drawing caption pill: stays visible even after the notch chat closes.
+            if isCursorOnThisScreen, let caption = screenAnnotationManager.latestCaption {
+                VStack {
+                    Spacer()
+                    VStack(spacing: 2) {
+                        if !caption.header.isEmpty {
+                            Text(caption.header)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                        Text(caption.text)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.black.opacity(0.72)))
+                    .frame(maxWidth: 640)
+                    .padding(.bottom, 56)
+                }
+                .transition(.opacity)
+                .animation(.easeOut(duration: 0.2), value: caption.text)
+            }
 
             // Welcome speech bubble (first launch only)
             if isCursorOnThisScreen && showWelcome && !welcomeText.isEmpty {
@@ -231,27 +252,14 @@ struct BlueCursorView: View {
                     }
             }
 
-            // Onboarding video — always in the view tree so opacity animation works
-            // reliably. When no player exists or opacity is 0, nothing is visible.
-            // allowsHitTesting(false) prevents it from intercepting clicks.
-            OnboardingVideoPlayerView(player: companionManager.onboardingVideoPlayer)
-                .frame(width: onboardingVideoPlayerWidth, height: onboardingVideoPlayerHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .shadow(color: Color.black.opacity(0.4 * companionManager.onboardingVideoOpacity), radius: 12, x: 0, y: 6)
-                .opacity(isCursorOnThisScreen ? companionManager.onboardingVideoOpacity : 0)
-                .position(
-                    x: cursorPosition.x + 10 + (onboardingVideoPlayerWidth / 2),
-                    y: cursorPosition.y + 18 + (onboardingVideoPlayerHeight / 2)
-                )
-                .animation(.spring(response: 0.2, dampingFraction: 0.6, blendDuration: 0), value: cursorPosition)
-                .animation(.easeInOut(duration: 2.0), value: companionManager.onboardingVideoOpacity)
-                .allowsHitTesting(false)
-
-            // Onboarding prompt — "press control + option and say hi" streamed after video ends
+            // Onboarding tour prompt — the current tour step line plus "step x of n"
             if isCursorOnThisScreen && companionManager.showOnboardingPrompt && !companionManager.onboardingPromptText.isEmpty {
                 Text(companionManager.onboardingPromptText)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: 260, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(
@@ -259,7 +267,6 @@ struct BlueCursorView: View {
                             .fill(cursorColor)
                             .shadow(color: cursorColor.opacity(0.5), radius: 6, x: 0, y: 0)
                     )
-                    .fixedSize()
                     .overlay(
                         GeometryReader { geo in
                             Color.clear
@@ -325,7 +332,7 @@ struct BlueCursorView: View {
                 .rotationEffect(.degrees(triangleRotationDegrees))
                 .shadow(color: cursorColor, radius: 8 + (buddyFlightScale - 1.0) * 20, x: 0, y: 0)
                 .scaleEffect(buddyFlightScale)
-                .opacity(!shouldHideIdleTriangleForPreference && buddyIsVisibleOnThisScreen && (companionManager.voiceState == .idle || companionManager.voiceState == .responding) ? cursorOpacity : 0)
+                .opacity(!shouldHideIdleTriangleForPreference && !screenAnnotationManager.isPenDrawing && buddyIsVisibleOnThisScreen && (companionManager.voiceState == .idle || companionManager.voiceState == .responding) ? cursorOpacity : 0)
                 .position(cursorPosition)
                 .animation(
                     buddyNavigationMode == .followingCursor
@@ -342,7 +349,11 @@ struct BlueCursorView: View {
             // Blue waveform — replaces the triangle while listening
             BlueCursorWaveformView(
                 audioPowerLevel: companionManager.currentAudioPowerLevel,
-                cursorColor: cursorColor
+                cursorColor: cursorColor,
+                isActive: ClickyIdleChurnRules.isIndicatorAnimationActive(
+                    isMatchingVoiceState: companionManager.voiceState == .listening,
+                    isBuddyVisibleOnThisScreen: buddyIsVisibleOnThisScreen
+                )
             )
                 .opacity(buddyIsVisibleOnThisScreen && companionManager.voiceState == .listening ? cursorOpacity : 0)
                 .position(cursorPosition)
@@ -350,7 +361,13 @@ struct BlueCursorView: View {
                 .animation(.easeIn(duration: 0.15), value: companionManager.voiceState)
 
             // Blue spinner — shown while the AI is processing (transcription + Claude + waiting for TTS)
-            BlueCursorSpinnerView(cursorColor: cursorColor)
+            BlueCursorSpinnerView(
+                cursorColor: cursorColor,
+                isActive: ClickyIdleChurnRules.isIndicatorAnimationActive(
+                    isMatchingVoiceState: companionManager.voiceState == .processing,
+                    isBuddyVisibleOnThisScreen: buddyIsVisibleOnThisScreen
+                )
+            )
                 .opacity(buddyIsVisibleOnThisScreen && companionManager.voiceState == .processing ? cursorOpacity : 0)
                 .position(cursorPosition)
                 .animation(.spring(response: 0.2, dampingFraction: 0.6, blendDuration: 0), value: cursorPosition)
@@ -384,9 +401,8 @@ struct BlueCursorView: View {
             }
         }
         .onDisappear {
-            timer?.invalidate()
+            stopTrackingCursor()
             navigationAnimationTimer?.invalidate()
-            companionManager.tearDownOnboardingVideo()
         }
         .onChange(of: companionManager.detectedElementScreenLocation) { newLocation in
             // When a UI element location is detected, navigate the buddy to
@@ -428,37 +444,76 @@ struct BlueCursorView: View {
 
     // MARK: - Cursor Tracking
 
+    /// Starts listening for mouse movement. Event-driven so nothing fires while the mouse is still;
+    /// the only timer left is the flight timer, which exists only during a navigation flight.
     private func startTrackingCursor() {
-        timer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { _ in
-            let mouseLocation = NSEvent.mouseLocation
-            self.isCursorOnThisScreen = self.screenFrame.contains(mouseLocation)
+        stopTrackingCursor()
+        let mouseMovementEventMask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
 
-            // During forward flight or pointing, the buddy is NOT interrupted by
-            // mouse movement — it completes its full animation and return flight.
-            // Only during the RETURN flight do we allow cursor movement to cancel
-            // (so the buddy snaps to following if the user moves while it's flying back).
-            if self.buddyNavigationMode == .navigatingToTarget && self.isReturningToCursor {
-                let currentMouseInSwiftUI = self.convertScreenPointToSwiftUICoordinates(mouseLocation)
-                let distanceFromNavigationStart = hypot(
-                    currentMouseInSwiftUI.x - self.cursorPositionWhenNavigationStarted.x,
-                    currentMouseInSwiftUI.y - self.cursorPositionWhenNavigationStarted.y
-                )
-                if distanceFromNavigationStart > 100 {
-                    cancelNavigationAndResumeFollowing()
-                }
-                return
+        // Global monitor: mouse moves over other apps. Hop with a Task rather than MainActor.assumeIsolated,
+        // whose isolation check crashed inside AppKit's event-monitor dispatch (text mode window key).
+        let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseMovementEventMask) { _ in
+            Task { @MainActor in
+                self.handleMouseLocationChanged()
             }
-
-            // During forward navigation or pointing, just skip cursor tracking
-            if self.buddyNavigationMode != .followingCursor {
-                return
+        }
+        // Local monitor: mouse moves over Clicky's own windows.
+        let localMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseMovementEventMask) { event in
+            Task { @MainActor in
+                self.handleMouseLocationChanged()
             }
+            return event
+        }
+        mouseMovementMonitors = [globalMonitor, localMonitor].compactMap { $0 }
+        handleMouseLocationChanged()
+    }
 
-            // Normal cursor following
-            let swiftUIPosition = self.convertScreenPointToSwiftUICoordinates(mouseLocation)
-            let buddyX = swiftUIPosition.x + 35
-            let buddyY = swiftUIPosition.y + 25
-            self.cursorPosition = CGPoint(x: buddyX, y: buddyY)
+    private func stopTrackingCursor() {
+        for monitor in mouseMovementMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        mouseMovementMonitors = []
+    }
+
+    /// Applies the current mouse location to this screen's buddy. Called by mouse events, by the
+    /// flight timer (so the return-flight cancel check still works with a still mouse) and when
+    /// navigation ends (so the buddy snaps back to where the mouse is now).
+    private func handleMouseLocationChanged() {
+        let mouseLocation = NSEvent.mouseLocation
+        let isMouseOnThisScreen = screenFrame.contains(mouseLocation)
+        if isCursorOnThisScreen != isMouseOnThisScreen {
+            isCursorOnThisScreen = isMouseOnThisScreen
+        }
+
+        // During forward flight or pointing, the buddy is NOT interrupted by
+        // mouse movement — it completes its full animation and return flight.
+        // Only during the RETURN flight do we allow cursor movement to cancel
+        // (so the buddy snaps to following if the user moves while it's flying back).
+        if buddyNavigationMode == .navigatingToTarget && isReturningToCursor {
+            let currentMouseInSwiftUI = convertScreenPointToSwiftUICoordinates(mouseLocation)
+            let distanceFromNavigationStart = hypot(
+                currentMouseInSwiftUI.x - cursorPositionWhenNavigationStarted.x,
+                currentMouseInSwiftUI.y - cursorPositionWhenNavigationStarted.y
+            )
+            if ClickyIdleChurnRules.shouldCancelReturnFlight(distanceFromNavigationStart: distanceFromNavigationStart) {
+                cancelNavigationAndResumeFollowing()
+            }
+            return
+        }
+
+        // During forward navigation or pointing, just skip cursor tracking
+        if buddyNavigationMode != .followingCursor {
+            return
+        }
+
+        // Normal cursor following. Off-screen buddies are hidden, so skip them.
+        if !isMouseOnThisScreen { return }
+        let newCursorPosition = ClickyIdleChurnRules.buddyFollowPosition(
+            mouseLocation: mouseLocation,
+            screenFrame: screenFrame
+        )
+        if cursorPosition != newCursorPosition {
+            cursorPosition = newCursorPosition
         }
     }
 
@@ -543,6 +598,11 @@ struct BlueCursorView: View {
 
         navigationAnimationTimer = Timer.scheduledTimer(withTimeInterval: frameInterval, repeats: true) { _ in
             currentFrame += 1
+
+            // The mouse monitors only fire on movement; re-check here so a return flight
+            // can still be canceled by a mouse that moved before the flight began.
+            self.handleMouseLocationChanged()
+            if self.navigationAnimationTimer == nil { return }
 
             if currentFrame > totalFrames {
                 self.navigationAnimationTimer?.invalidate()
@@ -690,6 +750,8 @@ struct BlueCursorView: View {
         navigationBubbleOpacity = 0.0
         navigationBubbleScale = 1.0
         companionManager.clearDetectedElementLocation()
+        // No polling timer anymore: snap to the current mouse location right away.
+        handleMouseLocationChanged()
     }
 
     // MARK: - Welcome Animation
@@ -709,8 +771,8 @@ struct BlueCursorView: View {
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     self.showWelcome = false
-                    // Start the onboarding video right after the welcome text disappears
-                    self.companionManager.setupOnboardingVideo()
+                    // Start the interactive tour right after the welcome text disappears
+                    self.companionManager.startOnboardingTour()
                 }
                 return
             }
@@ -729,12 +791,14 @@ struct BlueCursorView: View {
 private struct BlueCursorWaveformView: View {
     let audioPowerLevel: CGFloat
     let cursorColor: Color
+    /// False pauses the TimelineView so the always-in-tree (opacity 0) waveform costs nothing.
+    let isActive: Bool
 
     private let barCount = 5
     private let listeningBarProfile: [CGFloat] = [0.4, 0.7, 1.0, 0.7, 0.4]
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 36.0)) { timelineContext in
+        TimelineView(.animation(minimumInterval: 1.0 / 36.0, paused: !isActive)) { timelineContext in
             HStack(alignment: .center, spacing: 2) {
                 ForEach(0..<barCount, id: \.self) { barIndex in
                     RoundedRectangle(cornerRadius: 1.5, style: .continuous)
@@ -769,29 +833,64 @@ private struct BlueCursorWaveformView: View {
 /// while the AI is processing a voice input.
 private struct BlueCursorSpinnerView: View {
     let cursorColor: Color
-    @State private var isSpinning = false
+    /// False pauses the TimelineView so the always-in-tree (opacity 0) spinner costs nothing.
+    let isActive: Bool
 
     var body: some View {
-        Circle()
-            .trim(from: 0.15, to: 0.85)
-            .stroke(
-                AngularGradient(
-                    colors: [
-                        cursorColor.opacity(0.0),
-                        cursorColor
-                    ],
-                    center: .center
-                ),
-                style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
-            )
-            .frame(width: 14, height: 14)
-            .rotationEffect(.degrees(isSpinning ? 360 : 0))
-            .shadow(color: cursorColor.opacity(0.6), radius: 6, x: 0, y: 0)
-            .onAppear {
-                withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
-                    isSpinning = true
-                }
-            }
+        TimelineView(.animation(paused: !isActive)) { timelineContext in
+            Circle()
+                .trim(from: 0.15, to: 0.85)
+                .stroke(
+                    AngularGradient(
+                        colors: [
+                            cursorColor.opacity(0.0),
+                            cursorColor
+                        ],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                )
+                .frame(width: 14, height: 14)
+                .rotationEffect(.degrees(
+                    ClickyIdleChurnRules.spinnerRotationDegrees(
+                        timeIntervalSinceReferenceDate: timelineContext.date.timeIntervalSinceReferenceDate
+                    )
+                ))
+                .shadow(color: cursorColor.opacity(0.6), radius: 6, x: 0, y: 0)
+        }
+    }
+}
+
+// MARK: - Overlay Idle Rules
+
+extension ClickyIdleChurnRules {
+    /// Seconds for one full spinner turn (matches the old repeatForever animation).
+    static let spinnerSecondsPerTurn: Double = 0.8
+
+    /// Offset of the buddy from the mouse hotspot, in SwiftUI points.
+    static let buddyOffsetFromMouse = CGPoint(x: 35, y: 25)
+
+    /// A waveform/spinner only animates while its voice state is current AND the buddy is visible.
+    static func isIndicatorAnimationActive(isMatchingVoiceState: Bool, isBuddyVisibleOnThisScreen: Bool) -> Bool {
+        isMatchingVoiceState && isBuddyVisibleOnThisScreen
+    }
+
+    /// Spinner angle derived from the clock so no repeatForever animation is needed.
+    static func spinnerRotationDegrees(timeIntervalSinceReferenceDate: TimeInterval) -> Double {
+        let turnProgress = timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: spinnerSecondsPerTurn) / spinnerSecondsPerTurn
+        return turnProgress * 360.0
+    }
+
+    /// Where the buddy sits (SwiftUI coords, top-left origin) for a mouse location in AppKit screen coords.
+    static func buddyFollowPosition(mouseLocation: CGPoint, screenFrame: CGRect) -> CGPoint {
+        let localX = mouseLocation.x - screenFrame.origin.x
+        let localY = (screenFrame.origin.y + screenFrame.height) - mouseLocation.y
+        return CGPoint(x: localX + buddyOffsetFromMouse.x, y: localY + buddyOffsetFromMouse.y)
+    }
+
+    /// Moving the mouse this far from where the flight started cancels the return flight.
+    static func shouldCancelReturnFlight(distanceFromNavigationStart: CGFloat) -> Bool {
+        distanceFromNavigationStart > 100
     }
 }
 
@@ -808,8 +907,7 @@ class OverlayWindowManager {
 
         let isTransientlyActive = companionManager.voiceState != .idle
             || companionManager.detectedElementScreenLocation != nil
-            || companionManager.showOnboardingVideo
-            || companionManager.showOnboardingPrompt
+            || companionManager.isOnboardingActive
             || !hasShownOverlayBefore
 
         if ClickyConfiguration.shared.hideFloatingCursor && !isTransientlyActive {
@@ -868,46 +966,5 @@ class OverlayWindowManager {
 
     func isShowingOverlay() -> Bool {
         return !overlayWindows.isEmpty
-    }
-}
-
-// MARK: - Onboarding Video Player
-
-/// NSViewRepresentable wrapping an AVPlayerLayer so HLS video plays
-/// inside SwiftUI. Uses a custom NSView subclass to keep the player
-/// layer sized to the view's bounds automatically.
-private struct OnboardingVideoPlayerView: NSViewRepresentable {
-    let player: AVPlayer?
-
-    func makeNSView(context: Context) -> AVPlayerNSView {
-        let view = AVPlayerNSView()
-        view.player = player
-        return view
-    }
-
-    func updateNSView(_ nsView: AVPlayerNSView, context: Context) {
-        nsView.player = player
-    }
-}
-
-private class AVPlayerNSView: NSView {
-    var player: AVPlayer? {
-        didSet { playerLayer.player = player }
-    }
-
-    private let playerLayer = AVPlayerLayer()
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        playerLayer.videoGravity = .resizeAspectFill
-        layer?.addSublayer(playerLayer)
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func layout() {
-        super.layout()
-        playerLayer.frame = bounds
     }
 }

@@ -139,7 +139,9 @@ public nonisolated enum AgentCompletionXMLParser {
         let artifacts = parseListItems(from: artifactsRaw)
         let nextActions = parseListItems(from: nextActionsRaw)
         let stripped = stripKnownTags(from: rawText)
-        let preferredDisplay = [answer, summary, stripped.isEmpty ? rawText.trimmingCharacters(in: .whitespacesAndNewlines) : stripped]
+        // The prose reply outside the tags is the full answer the chat should show; the
+        // SUMMARY sentence and ANSWER JSON are only fallbacks when the job wrote tags alone.
+        let preferredDisplay = [stripped, summary, answer, rawText.trimmingCharacters(in: .whitespacesAndNewlines)]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { !$0.isEmpty }) ?? ""
 
@@ -368,20 +370,18 @@ public nonisolated enum AgentHarnessRuntimeError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .runnerNotFound(let searchedPaths):
-            return "Could not locate clicky-harness-runner.js. Searched: \(searchedPaths.joined(separator: ", "))"
-        case .runtimeNotFound(let searchedPaths):
-            return "Could not locate bun or node runtime. Searched: \(searchedPaths.joined(separator: ", "))"
-        case .runnerExitedEarly(let code, let stderr):
-            return "Agent harness runner exited early (code \(code)): \(stderr)"
+        case .runnerNotFound, .runtimeNotFound:
+            return String(localized: "The agent harness isn't set up in this build.")
+        case .runnerExitedEarly(_, let stderr):
+            return String(localized: "Clicky's agent runner couldn't start, so this job didn't run. \(stderr)")
         case .readinessTimeout:
-            return "Timed out waiting for agent harness runner readiness line."
+            return String(localized: "Clicky's agent runner couldn't start, so this job didn't run. \(String(localized: "It timed out waiting to be ready."))")
         case .invalidRunnerResponse(let detail):
             return "Invalid response from agent harness runner: \(detail)"
         case .httpError(let statusCode, let body):
             return "Agent harness HTTP error \(statusCode): \(body)"
         case .turnFailed(let reason):
-            return "Agent turn failed: \(reason)"
+            return reason
         }
     }
 }

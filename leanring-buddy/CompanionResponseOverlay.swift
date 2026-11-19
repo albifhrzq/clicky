@@ -25,7 +25,9 @@ final class CompanionResponseOverlayViewModel: ObservableObject {
 final class CompanionResponseOverlayManager {
     private let overlayViewModel = CompanionResponseOverlayViewModel()
     private var overlayPanel: NSPanel?
-    private var cursorTrackingTimer: Timer?
+    private var mouseMovementMonitors: [Any] = []
+    private var lastRepositionMouseLocation: CGPoint?
+    private var lastRepositionPanelSize: CGSize?
     private var autoHideWorkItem: DispatchWorkItem?
 
     /// The horizontal offset from the cursor to the left edge of the overlay panel.
@@ -104,17 +106,32 @@ final class CompanionResponseOverlayManager {
     }
 
     private func startCursorTracking() {
-        // 60fps cursor tracking so the panel stays glued to the mouse
-        cursorTrackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        // Event-driven instead of a 60 Hz timer: nothing runs while the mouse is still, and the
+        // monitors exist only while the bubble is visible (stopCursorTracking removes them).
+        stopCursorTracking()
+        let mouseMovementEventMask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseMovementEventMask) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.repositionPanelNearCursor()
             }
         }
+        let localMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseMovementEventMask) { [weak self] event in
+            Task { @MainActor [weak self] in
+                self?.repositionPanelNearCursor()
+            }
+            return event
+        }
+        mouseMovementMonitors = [globalMonitor, localMonitor].compactMap { $0 }
+        repositionPanelNearCursor()
     }
 
     private func stopCursorTracking() {
-        cursorTrackingTimer?.invalidate()
-        cursorTrackingTimer = nil
+        lastRepositionMouseLocation = nil
+        lastRepositionPanelSize = nil
+        for monitor in mouseMovementMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        mouseMovementMonitors = []
     }
 
     private func repositionPanelNearCursor() {
@@ -122,6 +139,10 @@ final class CompanionResponseOverlayManager {
 
         let mouseLocation = NSEvent.mouseLocation
         let panelSize = overlayPanel.frame.size
+        // Skip all work while the mouse and panel size are unchanged.
+        if mouseLocation == lastRepositionMouseLocation && panelSize == lastRepositionPanelSize { return }
+        lastRepositionMouseLocation = mouseLocation
+        lastRepositionPanelSize = panelSize
 
         // Position the panel to the right of and slightly below the cursor.
         // In macOS screen coordinates, Y increases upward, so "below" means
@@ -159,7 +180,7 @@ final class CompanionResponseOverlayManager {
         let newWidth = min(fittingSize.width, overlayMaxWidth)
         let newHeight = fittingSize.height
 
-        // Keep the panel origin relative to the cursor (the timer handles that),
+        // Keep the panel origin relative to the cursor (mouse-move events handle that),
         // but update the frame size so the content fits.
         var frame = overlayPanel.frame
         let heightDelta = newHeight - frame.height
@@ -168,6 +189,8 @@ final class CompanionResponseOverlayManager {
         frame.origin.y -= heightDelta
         overlayPanel.setFrame(frame, display: true)
         contentView.frame = NSRect(origin: .zero, size: frame.size)
+        // No polling timer anymore: re-place the panel now that its size changed.
+        repositionPanelNearCursor()
     }
 
     private func fadeOutAndHide() {

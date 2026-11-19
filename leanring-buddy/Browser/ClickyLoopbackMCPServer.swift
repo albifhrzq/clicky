@@ -503,7 +503,7 @@ public final class ClickyLoopbackMCPServer {
                     object: ["error": "Server deallocated"]
                 )
             }
-            return await self.handleMCPHTTPRequest(body: request.body)
+            return await self.handleMCPHTTPRequest(body: request.body, headers: request.headers)
         }
 
         let boundPort = try server.start()
@@ -641,65 +641,8 @@ public final class ClickyLoopbackMCPServer {
             self.handleRevealArtifact(arguments: arguments)
         }
 
-        // 6. Delegate placeholders for Lane B/C tools so tools/list advertises them
-        // and external modules can overwrite them via registerTool(...)
-        registerPlaceholderTool(
-            name: "repeat_this_job",
-            description: "Make this job repeat on a schedule, or update/pause/resume/stop its routine.",
-            inputSchema: [
-                "type": "object",
-                "properties": [
-                    "schedule": ["type": "string"],
-                    "prompt": ["type": "string"],
-                    "action": ["type": "string"],
-                    "ran_now": ["type": "boolean"],
-                    "job_id": ["type": "string"]
-                ]
-            ]
-        )
-
-        registerPlaceholderTool(
-            name: "find_jobs",
-            description: "Search earlier HeyClicky jobs by topic, title, site, or file.",
-            inputSchema: [
-                "type": "object",
-                "properties": [
-                    "query": ["type": "string"],
-                    "limit": ["type": "integer"]
-                ]
-            ]
-        )
-
-        registerPlaceholderTool(
-            name: "read_job",
-            description: "Read the report or conversation of an earlier job by job_id.",
-            inputSchema: [
-                "type": "object",
-                "properties": [
-                    "job_id": ["type": "string"],
-                    "detail": ["type": "string"]
-                ],
-                "required": ["job_id"]
-            ]
-        )
-
-        let noteToolSchemas: [(String, String, [String: Any])] = [
-            ("note", "Write or replace the full job note markdown.", ["type": "object", "properties": ["md": ["type": "string"]], "required": ["md"]]),
-            ("note_add", "Append markdown lines to the job note after a heading or row.", ["type": "object", "properties": ["after": ["type": "string"], "md": ["type": "string"]], "required": ["md"]]),
-            ("note_replace", "Replace an exact line or segment in the job note.", ["type": "object", "properties": ["find": ["type": "string"], "md": ["type": "string"]], "required": ["find", "md"]]),
-            ("note_remove", "Remove or strike through a line in the job note.", ["type": "object", "properties": ["find": ["type": "string"], "why": ["type": "string"]], "required": ["find"]]),
-            ("note_tick", "Mark a plan checkbox item as done and optionally advance {now}.", ["type": "object", "properties": ["item": ["type": "string"], "next": ["type": "string"]], "required": ["item"]]),
-            ("note_answer", "Set the answer summary banner at the top of the job note.", ["type": "object", "properties": ["line": ["type": "string"], "big": ["type": "string"], "aside": ["type": "string"]], "required": ["line"]])
-        ]
-        for (toolName, toolDescription, schema) in noteToolSchemas {
-            registerPlaceholderTool(name: toolName, description: toolDescription, inputSchema: schema)
-        }
-    }
-
-    private func registerPlaceholderTool(name: String, description: String, inputSchema: [String: Any]) {
-        registerTool(name: name, description: description, inputSchema: inputSchema) { _ in
-            ClickyMCPToolResult.error("not_implemented", extra: ["toolName": name])
-        }
+        // 6. Job tools (repeat_this_job, find_jobs, read_job)
+        registerJobTools()
     }
 
     // MARK: - Built-in reveal_artifact
@@ -758,7 +701,7 @@ public final class ClickyLoopbackMCPServer {
 
     // MARK: - JSON-RPC 2.0 Router
 
-    private func handleMCPHTTPRequest(body: Data) async -> ClickyLoopbackHTTPServer.Response {
+    private func handleMCPHTTPRequest(body: Data, headers: [String: String] = [:]) async -> ClickyLoopbackHTTPServer.Response {
         guard let parsedObject = try? JSONSerialization.jsonObject(with: body, options: []),
               let requestDict = parsedObject as? [String: Any] else {
             return ClickyLoopbackHTTPServer.Response.json(
@@ -777,7 +720,7 @@ public final class ClickyLoopbackMCPServer {
 
         switch method {
         case "initialize":
-            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.3"
+            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.4"
             let result: [String: Any] = [
                 "protocolVersion": "2025-03-26",
                 "capabilities": [
@@ -839,7 +782,13 @@ public final class ClickyLoopbackMCPServer {
             }
 
             do {
-                let toolResult = try await registered.handler(arguments)
+                let requestSlug = headers["x-clicky-slug"]
+                let requestThreadID = headers["x-clicky-thread"]
+                let toolResult = try await ClickyMCPRequestContext.$clickySlug.withValue(requestSlug) {
+                    try await ClickyMCPRequestContext.$clickyThreadID.withValue(requestThreadID) {
+                        try await registered.handler(arguments)
+                    }
+                }
                 return ClickyLoopbackHTTPServer.Response.json(
                     status: 200,
                     object: jsonRPCResult(

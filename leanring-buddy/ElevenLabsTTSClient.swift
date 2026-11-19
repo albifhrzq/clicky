@@ -49,7 +49,8 @@ final class ElevenLabsTTSClient: NSObject, ObservableObject, AVAudioPlayerDelega
 
     /// Sends `text` to ElevenLabs TTS and plays the resulting audio.
     /// Reads `ClickyConfiguration.shared.workerBaseURL` dynamically at request time.
-    func speakText(_ text: String, allowSystemFallback: Bool = false) async throws {
+    func speakText(_ text: String, allowSystemFallback: Bool = false, isUnprompted: Bool = false) async throws {
+        if isUnprompted, ClickyCallPresenceDetector.shouldStayQuietForUnpromptedAudio() { return }
         let config = ClickyConfiguration.shared
         let trimmedDirectKey = config.elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -176,8 +177,10 @@ final class ElevenLabsTTSClient: NSObject, ObservableObject, AVAudioPlayerDelega
     func speakWithSystemFallback(
         _ text: String,
         languageCode: String? = nil,
-        rate: Double = 1.0
+        rate: Double = 1.0,
+        isUnprompted: Bool = false
     ) {
+        if isUnprompted, ClickyCallPresenceDetector.shouldStayQuietForUnpromptedAudio() { return }
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
 

@@ -53,7 +53,8 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
     /// Invoked on MainActor after releasing the microphone when the custom wake phrase is detected.
     var onWakeDetected: ((_ trailingText: String) -> Void)?
 
-    private var audioEngine: AVAudioEngine?
+    private let microphoneCaptureInput = ClickyMicrophoneCaptureInput(logPrefix: "HeyClickyWakeWordListener")
+    private var isCaptureRunning = false
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private let tapRequestLock = NSLock()
     nonisolated(unsafe) private var tapRecognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -128,7 +129,7 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
                 if config.voiceWakeWordEnabled, case .paused = self.status {
                     return
                 }
-                if config.voiceWakeWordEnabled, self.audioEngine == nil {
+                if config.voiceWakeWordEnabled, !self.isCaptureRunning {
                     self.startListeningIfPermitted()
                 }
             }
@@ -228,27 +229,10 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
         }
         self.speechRecognizer = recognizer
 
-        let engine = AVAudioEngine()
-        let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            throw NSError(
-                domain: "HeyClickyWakeWordListener",
-                code: -2,
-                userInfo: [NSLocalizedDescriptionKey: "No active microphone input format"]
-            )
-        }
+        startNewRecognitionTask(recognizer: recognizer, phraseSetting: phraseSetting)
 
-        self.audioEngine = engine
-        startNewRecognitionTask(on: engine, recognizer: recognizer, phraseSetting: phraseSetting)
-
-        inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            self?.appendTapAudioBuffer(buffer)
-        }
-
-        engine.prepare()
-        try engine.start()
+        try microphoneCaptureInput.start(onAudioBuffer: Self.makeAudioBufferHandler(listener: self))
+        isCaptureRunning = true
 
         status = .listening(phrase: Self.primaryDisplayPhrase(from: phraseSetting))
 
@@ -264,7 +248,6 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
     }
 
     private func startNewRecognitionTask(
-        on engine: AVAudioEngine,
         recognizer: SFSpeechRecognizer,
         phraseSetting: String
     ) {
@@ -304,13 +287,12 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
 
     private func recycleRecognitionTaskIfActive() {
         guard case .listening = status,
-              let engine = audioEngine,
-              engine.isRunning,
+              isCaptureRunning,
               let recognizer = speechRecognizer,
               recognizer.isAvailable else {
             return
         }
-        startNewRecognitionTask(on: engine, recognizer: recognizer, phraseSetting: currentPhraseSetting)
+        startNewRecognitionTask(recognizer: recognizer, phraseSetting: currentPhraseSetting)
     }
 
     private func handleRecognitionCallback(
@@ -357,19 +339,23 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
         recognitionRequest?.endAudio()
         recognitionRequest = nil
 
-        if let engine = audioEngine {
-            if engine.isRunning {
-                engine.stop()
-            }
-            engine.inputNode.removeTap(onBus: 0)
-            audioEngine = nil
-        }
+        microphoneCaptureInput.stop()
+        isCaptureRunning = false
     }
 
     private func setTapRecognitionRequest(_ request: SFSpeechAudioBufferRecognitionRequest?) {
         tapRequestLock.lock()
         tapRecognitionRequest = request
         tapRequestLock.unlock()
+    }
+
+    /// Built nonisolated so the closure is not MainActor-isolated when the capture queue invokes it.
+    nonisolated private static func makeAudioBufferHandler(
+        listener: HeyClickyWakeWordListener
+    ) -> @Sendable (AVAudioPCMBuffer) -> Void {
+        return { [weak listener] buffer in
+            listener?.appendTapAudioBuffer(buffer)
+        }
     }
 
     nonisolated private func appendTapAudioBuffer(_ buffer: AVAudioPCMBuffer) {
@@ -384,6 +370,14 @@ final class HeyClickyWakeWordListener: NSObject, ObservableObject {
     private static func makeRecognizer(for phraseSetting: String) -> SFSpeechRecognizer? {
         let lower = phraseSetting.lowercased()
         let selectedLang = ClickyConfiguration.shared.selectedVoiceLanguage.lowercased()
+
+        // Honour the user's explicit language instead of guessing from the phrase.
+        if selectedLang != "auto", !selectedLang.isEmpty,
+           let language = VoiceLanguageCatalog.language(forCode: selectedLang),
+           let selectedRecognizer = SFSpeechRecognizer(locale: Locale(identifier: language.bcp47Locale)),
+           selectedRecognizer.isAvailable {
+            return selectedRecognizer
+        }
 
         if (lower.contains("halo") || lower.contains("hai ") || selectedLang == "id"),
            let idRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "id-ID")),

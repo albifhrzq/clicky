@@ -96,6 +96,12 @@ public final class AgentHarnessRunnerRuntime: ObservableObject {
             "leaseMetadata": [
                 "clicky_slug": clickySlug,
                 "clicky_thread_id": threadID
+            ],
+            // The runner implements note/note_add/note_replace/note_remove/note_tick/note_answer
+            // natively when this is present. The file must be named note.md and live in the workspace.
+            "note": [
+                "tools": true,
+                "path": Self.noteFilePath(forSlug: clickySlug, workspaceURL: workspaceURL)
             ]
         ]
         if effectiveModel.isEmpty {
@@ -176,7 +182,7 @@ public final class AgentHarnessRunnerRuntime: ObservableObject {
 
             if let completedStatus {
                 if completedStatus.status == "failed" {
-                    let message = completedStatus.error ?? "Agent turn failed."
+                    let message = completedStatus.error ?? String(localized: "Agent thread failed.")
                     lastError = message
                     throw AgentHarnessRuntimeError.turnFailed(message)
                 }
@@ -435,6 +441,17 @@ public final class AgentHarnessRunnerRuntime: ObservableObject {
             .appendingPathComponent("AgentHarnessState", isDirectory: true)
         try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
         return stateDirectory
+    }
+
+    /// Prefers the canonical per-slug note.md, but falls back to the turn workspace so the
+    /// runner's "must live under the workspace" rule always holds.
+    static func noteFilePath(forSlug clickySlug: String, workspaceURL: URL) -> String {
+        let canonicalNoteURL = ClickyWorkFolderFiles.shared.noteMarkdownURL(forSlug: clickySlug)
+        // Trailing "/" so "/ws" does not match the sibling "/ws-other".
+        if canonicalNoteURL.path.hasPrefix(workspaceURL.path + "/") {
+            return canonicalNoteURL.path
+        }
+        return workspaceURL.appendingPathComponent("note.md", isDirectory: false).path
     }
 
     private static func sanitizeJobID(_ rawJobID: String) -> String {

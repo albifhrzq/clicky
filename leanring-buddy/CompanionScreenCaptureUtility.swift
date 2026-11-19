@@ -37,11 +37,14 @@ enum CompanionScreenCaptureUtility {
 
         let mouseLocation = NSEvent.mouseLocation
 
-        // Exclude all windows belonging to this app so the AI sees
-        // only the user's content, not our overlays or panels.
+        // Exclude this app's windows so the AI sees the user's content, not our cursor, notch or panels.
+        // The drawing overlay is the exception: the model has to see what it drew to talk about or change it.
         let ownBundleIdentifier = Bundle.main.bundleIdentifier
+        let drawingOverlayWindowNumber = ScreenAnnotationManager.shared.drawingOverlayWindowNumber
         let ownAppWindows = content.windows.filter { window in
-            window.owningApplication?.bundleIdentifier == ownBundleIdentifier
+            guard window.owningApplication?.bundleIdentifier == ownBundleIdentifier else { return false }
+            if let drawingOverlayWindowNumber, Int(window.windowID) == drawingOverlayWindowNumber { return false }
+            return true
         }
 
         // Build a lookup from display ID to NSScreen so we can use AppKit-coordinate

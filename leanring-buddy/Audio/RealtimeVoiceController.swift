@@ -73,7 +73,16 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
     /// Optional delegation hook for Path B turn-based responses (e.g. CompanionManager
     /// screenshot + vision pipeline). When nil, falls back to UnifiedLLMClient.completeText.
     public var turnBasedHandler: ((_ userText: String) async throws -> String)?
+    /// Builds the session instructions at connect time (memory, skills, abilities). Set by CompanionManager.
+    public var instructionsProvider: ((_ baseInstructions: String) -> String)?
+    /// Starts (or offers) a background agent job for the `start_background_job` tool. Set by CompanionManager.
+    /// Returns a status line for the model (started / waiting for the user's OK / not started and why).
+    public var backgroundJobHandler: ((_ task: String) -> String)?
 
+    private var realtimeToolCallsInFlight = 0
+    private var realtimeToolCallGate = RealtimeToolCallGate()
+    /// Bumped whenever a session starts or stops so late tool results can be dropped.
+    private var realtimeSessionGeneration = 0
     private nonisolated let realtimeClient = RealtimeVoiceClient()
     private let elevenLabsTTSClient = ElevenLabsTTSClient.shared
     private let speechSynthesizer = AVSpeechSynthesizer()
@@ -81,7 +90,15 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
     private let urlSession: URLSession
 
     private var captureEngine: AVAudioEngine?
+    private let legacyMicrophoneCaptureInput = ClickyMicrophoneCaptureInput(logPrefix: "RealtimeVoiceController")
+    private var isLegacyMicrophoneCaptureRunning = false
     private var captureConverter: BuddyPCM16AudioConverter?
+    /// True while `playbackEngine` doubles as the capture engine with voice processing (AEC) enabled.
+    private var isDuplexVoiceProcessingActive = false
+    private var activeCaptureSampleRate: Double = 24000
+    private var captureStartedAt = Date()
+    private var lastNonSilentInputAt: Date?
+    private var hasReportedDeadMicrophone = false
     private var playbackEngine = AVAudioEngine()
     private var playerNode = AVAudioPlayerNode()
     private var playbackFormat: AVAudioFormat
@@ -91,6 +108,8 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
     private var cooldownRefreshTimer: Timer?
     private var activeRealtimeProvider: RealtimeVoiceProvider?
     private var pendingRealtimeBuffersCount = 0
+    /// A route change wants a capture restart, but playback was active; apply it once playback drains.
+    private var isCaptureRestartPending = false
     private var hasInjectedPreRollForCurrentTurn = false
     private var lastPlaybackActivityAt: Date = .distantPast
     private var isRebuildingPlaybackEngine = false
@@ -154,6 +173,9 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
     }
 
     public func stopSession() {
+        realtimeSessionGeneration += 1
+        realtimeToolCallsInFlight = 0
+        realtimeToolCallGate.resetAll()
         activeTurnTask?.cancel()
         activeTurnTask = nil
         ioCycleWatchdogTask?.cancel()
@@ -289,7 +311,7 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
 
     private func startDuplexRealtimeSession(preferredProvider: RealtimeVoiceProvider) async {
         guard await ensureMicrophonePermission() else {
-            let message = "Microphone permission is required for realtime voice."
+            let message = ClickyVoiceMessages.microphoneAccessIsOff
             lastErrorMessage = message
             state = .error(message)
             return
@@ -302,7 +324,8 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
                 try startMicCapture(sampleRate: realtimeClient.inputSampleRate)
                 state = .listening
             } catch {
-                let message = "Failed to start microphone capture: \(error.localizedDescription)"
+                print("⚠️ Realtime mic capture failed: \(error.localizedDescription)")
+                let message = ClickyVoiceMessages.microphoneCaptureFailed
                 lastErrorMessage = message
                 state = .error(message)
             }
@@ -319,7 +342,8 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
                     state = .listening
                     return
                 } catch {
-                    let message = "Failed to start microphone capture: \(error.localizedDescription)"
+                    print("⚠️ Realtime mic capture failed: \(error.localizedDescription)")
+                let message = ClickyVoiceMessages.microphoneCaptureFailed
                     lastErrorMessage = message
                     state = .error(message)
                     return
@@ -349,7 +373,7 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
             apiKey: apiKey,
             voiceID: config.selectedVoiceID,
             languageCode: config.selectedVoiceLanguage,
-            instructions: Self.realtimeSystemInstructions,
+            instructions: realtimeInstructionsForConnect(),
             speechSpeed: speechSpeed
         )
 
@@ -365,7 +389,13 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
             if provider == .gemini {
                 markGeminiCooldown()
             }
-            lastErrorMessage = error.localizedDescription
+            print("⚠️ Realtime connect failed (\(provider.displayName)): \(error.localizedDescription)")
+            lastErrorMessage = ClickyVoiceErrorMapper.message(
+                for: error,
+                providerName: provider.displayName,
+                isPushToTalk: false,
+                fallback: ClickyVoiceMessages.myVoiceConnectionDidntOpen
+            )
             return false
         }
     }
@@ -394,6 +424,7 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
 
         case .userTranscriptCompleted(let transcript):
             lastUserTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            realtimeToolCallGate.resetForNewUtterance()
 
         case .assistantResponseStarted:
             lastAssistantTranscript = ""
@@ -413,20 +444,26 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
             lastAssistantTranscript = transcript
 
         case .assistantResponseCompleted:
+            if realtimeToolCallsInFlight > 0 { break }
             if pendingRealtimeBuffersCount <= 0 && !playerNode.isPlaying {
-                if captureEngine?.isRunning == true {
+                if isMicrophoneCaptureActive {
                     state = .listening
                 } else {
                     state = .idle
                 }
+                applyPendingCaptureRestartIfIdle()
             }
 
+        case .toolCallRequested(let toolCall):
+            runRealtimeToolCall(toolCall)
+
         case .error(let message):
-            lastErrorMessage = message
+            print("⚠️ Realtime error: \(message)")
+            lastErrorMessage = ClickyVoiceMessages.connectionDroppedMidResponse
             if activeRealtimeProvider == .gemini {
                 handleMidSessionGeminiFailure(message: message)
             } else {
-                state = .error(message)
+                state = .error(ClickyVoiceMessages.connectionDroppedMidResponse)
             }
 
         case .disconnected(let reason):
@@ -443,6 +480,65 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
         }
     }
 
+    private func realtimeInstructionsForConnect() -> String {
+        let languageCode = ClickyConfiguration.shared.selectedVoiceLanguage.trimmingCharacters(in: .whitespacesAndNewlines)
+        var base = Self.realtimeSystemInstructions
+        if !languageCode.isEmpty, languageCode.lowercased() != "auto" {
+            let languageName = VoiceLanguageCatalog.language(forCode: languageCode)?.name ?? languageCode
+            base += "\n\nLanguage preference: Always respond naturally in \(languageName) (\(languageCode))."
+        }
+        return instructionsProvider?(base) ?? base
+    }
+
+    /// Runs the tool off the event path (mic audio keeps flowing), then returns the result to the model.
+    private func runRealtimeToolCall(_ toolCall: RealtimeToolCall) {
+        if let busyOutput = realtimeToolCallGate.admit(toolName: toolCall.name) {
+            realtimeClient.sendToolResult(toolCall, output: busyOutput)
+            return
+        }
+        realtimeToolCallsInFlight += 1
+        state = .thinking
+        let sessionGenerationAtStart = realtimeSessionGeneration
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var output: String
+            do {
+                switch toolCall.name {
+                case RealtimeToolSupport.useScreenToolName:
+                    let request = toolCall.arguments["request"] ?? self.lastUserTranscript
+                    guard let handler = self.turnBasedHandler else {
+                        throw RealtimeToolError.handlerUnavailable
+                    }
+                    output = try await handler(request)
+                case RealtimeToolSupport.startBackgroundJobToolName:
+                    guard let handler = self.backgroundJobHandler else {
+                        throw RealtimeToolError.handlerUnavailable
+                    }
+                    output = handler(toolCall.arguments["task"] ?? self.lastUserTranscript)
+                default:
+                    output = "Error: unknown tool \(toolCall.name)."
+                }
+            } catch {
+                output = "Error: \(error.localizedDescription). Apologize briefly and tell the user it didn't work."
+            }
+            // Session ended or was replaced while the tool ran: drop the result, leave state alone.
+            guard self.realtimeSessionGeneration == sessionGenerationAtStart else { return }
+            self.realtimeToolCallsInFlight = max(0, self.realtimeToolCallsInFlight - 1)
+            self.realtimeToolCallGate.finishToolCall()
+            guard self.activeRealtimeProvider != nil else {
+                self.state = self.isMicrophoneCaptureActive ? .listening : .idle
+                return
+            }
+            // The model answers next; assistantResponseStarted/Completed drive the state from here.
+            self.realtimeClient.sendToolResult(toolCall, output: output)
+        }
+    }
+
+    private enum RealtimeToolError: LocalizedError {
+        case handlerUnavailable
+        var errorDescription: String? { "That ability isn't available right now" }
+    }
+
     private func handleMidSessionGeminiFailure(message: String) {
         markGeminiCooldown()
         realtimeClient.disconnect()
@@ -452,7 +548,8 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
         guard !openAIKey.isEmpty else {
             activeRoute = .turnBased
             activeProviderLabel = turnBasedProviderLabel()
-            lastErrorMessage = "Gemini Live unavailable (\(message)). Switched to turn-based mode."
+            print("⚠️ Gemini Live unavailable (\(message)). Switched to turn-based mode.")
+            lastErrorMessage = ClickyVoiceMessages.myVoiceConnectionDidntOpen
             state = .idle
             return
         }
@@ -466,7 +563,7 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
             } else {
                 self.activeRoute = .turnBased
                 self.activeProviderLabel = self.turnBasedProviderLabel()
-                self.state = .error(message)
+                self.state = .error(ClickyVoiceMessages.connectionDroppedMidResponse)
             }
         }
     }
@@ -795,6 +892,9 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
         // Inject pre-roll silence on the first chunk of a cold BT/wired playback turn
         if !hasInjectedPreRollForCurrentTurn {
             hasInjectedPreRollForCurrentTurn = true
+            if ClickyMicrophoneHealth.isDefaultOutputMuted() {
+                lastErrorMessage = ClickyMicrophoneProblem.outputMuted.userFacingMessage
+            }
             let isCold = Date().timeIntervalSince(lastPlaybackActivityAt) > 2.0
             if isCold {
                 let preRollSeconds = ClickyAudioTopologyMonitor.shared.snapshot.requiredPreRollSilenceDuration
@@ -837,11 +937,12 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
         pendingRealtimeBuffersCount = max(0, pendingRealtimeBuffersCount - 1)
         lastPlaybackActivityAt = Date()
         if pendingRealtimeBuffersCount == 0 && state == .speaking {
-            if captureEngine?.isRunning == true {
+            if isMicrophoneCaptureActive {
                 state = .listening
             } else {
                 state = .idle
             }
+            applyPendingCaptureRestartIfIdle()
         }
     }
 
@@ -946,6 +1047,7 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.handlePostWakeAudioCheck()
+                self?.restartCaptureIfVoiceProcessingSuitabilityChanged()
             }
             .store(in: &cancellables)
     }
@@ -1018,6 +1120,32 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
 
     @discardableResult
     private func rebuildPlaybackEngineOnce() -> Bool {
+        // Duplex mode owns the capture tap too, so redo the whole graph (voice processing + tap).
+        if isDuplexVoiceProcessingActive {
+            do {
+                try startDuplexVoiceProcessingCapture(sampleRate: activeCaptureSampleRate)
+                pendingRealtimeBuffersCount = 0
+                return playbackEngine.isRunning
+            } catch {
+                print("⚠️ Duplex rebuild failed, falling back to two engines: \(error.localizedDescription)")
+                isDuplexVoiceProcessingActive = false
+                // Tear down the old duplex engine (tap + engine) and give playback a fresh engine,
+                // otherwise the stale graph keeps the mic and the old player attached.
+                captureEngine?.inputNode.removeTap(onBus: 0)
+                captureEngine?.stop()
+                legacyMicrophoneCaptureInput.stop()
+                isLegacyMicrophoneCaptureRunning = false
+                playerNode.stop()
+                playbackEngine.stop()
+                captureEngine = nil
+                playbackEngine = AVAudioEngine()
+                playerNode = AVAudioPlayerNode()
+                configurePlaybackEngineGraph()
+                try? startLegacyMicCapture(sampleRate: activeCaptureSampleRate)
+                return false
+            }
+        }
+
         playerNode.stop()
         playbackEngine.stop()
         playbackEngine.reset()
@@ -1087,13 +1215,137 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
 
     private func startMicCapture(sampleRate: Double) throws {
         stopMicCapture()
+        activeCaptureSampleRate = sampleRate
+        captureStartedAt = Date()
+        lastNonSilentInputAt = nil
+        hasReportedDeadMicrophone = false
+
+        if isVoiceProcessingSuitableForCurrentRoute() {
+            do {
+                try startDuplexVoiceProcessingCapture(sampleRate: sampleRate)
+                return
+            } catch {
+                // Fall back to the original two-engine behaviour.
+                print("⚠️ Voice processing unavailable, using two engines: \(error.localizedDescription)")
+                isDuplexVoiceProcessingActive = false
+                playbackEngine.stop()
+                playbackEngine = AVAudioEngine()
+                playerNode = AVAudioPlayerNode()
+                configurePlaybackEngineGraph()
+            }
+        }
+        try startLegacyMicCapture(sampleRate: sampleRate)
+    }
+
+    private func isVoiceProcessingSuitableForCurrentRoute() -> Bool {
+        let snapshot = ClickyAudioTopologyMonitor.shared.snapshot
+        return ClickyAudioRoutePolicy.shouldUseVoiceProcessing(
+            outputIsBluetooth: snapshot.outputIsBluetooth,
+            outputIsHeadphones: snapshot.outputIsHeadphones
+        )
+    }
+
+    private func restartCaptureIfVoiceProcessingSuitabilityChanged() {
+        guard isMicrophoneCaptureActive else { return }
+        guard isVoiceProcessingSuitableForCurrentRoute() != isDuplexVoiceProcessingActive else {
+            isCaptureRestartPending = false
+            return
+        }
+        // Restarting rebuilds the playback engine, which would cut off speech: wait for the next idle point.
+        guard state != .speaking, pendingRealtimeBuffersCount <= 0 else {
+            isCaptureRestartPending = true
+            return
+        }
+        isCaptureRestartPending = false
+        do {
+            try startMicCapture(sampleRate: activeCaptureSampleRate)
+        } catch {
+            print("⚠️ Realtime mic restart failed: \(error.localizedDescription)")
+            let message = ClickyVoiceMessages.microphoneCaptureFailed
+            lastErrorMessage = message
+            state = .error(message)
+        }
+    }
+
+    /// Runs a capture restart that was postponed while the assistant was speaking.
+    private func applyPendingCaptureRestartIfIdle() {
+        guard isCaptureRestartPending else { return }
+        restartCaptureIfVoiceProcessingSuitabilityChanged()
+    }
+
+    /// One engine for both capture and playback with voice processing (echo cancellation) on.
+    /// The input format MUST be read after enabling voice processing: it changes the node's format.
+    private func startDuplexVoiceProcessingCapture(sampleRate: Double) throws {
+        playerNode.stop()
+        playbackEngine.stop()
 
         let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
         let inputNode = engine.inputNode
+        try inputNode.setVoiceProcessingEnabled(true)
+        inputNode.voiceProcessingOtherAudioDuckingConfiguration = AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+            enableAdvancedDucking: false,
+            duckingLevel: .min
+        )
+
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: playbackFormat)
+
         let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw NSError(domain: "ClickyVoice", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid voice processing input format"])
+        }
+
+        let converter = BuddyPCM16AudioConverter(targetSampleRate: sampleRate)
+        captureConverter = converter
+        installCaptureTap(on: inputNode, format: inputFormat, converter: converter, sampleRate: sampleRate)
+
+        engine.prepare()
+        try engine.start()
+        player.play()
+
+        playbackEngine = engine
+        playerNode = player
+        captureEngine = engine
+        isDuplexVoiceProcessingActive = true
+    }
+
+    /// Original behaviour: a dedicated capture engine alongside the playback engine.
+    private func startLegacyMicCapture(sampleRate: Double) throws {
         let converter = BuddyPCM16AudioConverter(targetSampleRate: sampleRate)
         self.captureConverter = converter
+        try legacyMicrophoneCaptureInput.start(
+            onAudioBuffer: Self.makeLegacyCaptureHandler(
+                controller: self,
+                converter: converter,
+                client: realtimeClient,
+                sampleRate: sampleRate
+            )
+        )
+        isLegacyMicrophoneCaptureRunning = true
+    }
 
+    /// Built nonisolated so the closure is not MainActor-isolated when the capture queue invokes it.
+    private nonisolated static func makeLegacyCaptureHandler(
+        controller: RealtimeVoiceController,
+        converter: BuddyPCM16AudioConverter,
+        client: RealtimeVoiceClient,
+        sampleRate: Double
+    ) -> @Sendable (AVAudioPCMBuffer) -> Void {
+        return { [weak controller] buffer in
+            controller?.updatePowerLevel(from: buffer)
+            if let pcmData = converter.convertToPCM16Data(from: buffer), !pcmData.isEmpty {
+                client.sendInputAudioPCM16(pcmData, sampleRate: Int(sampleRate))
+            }
+        }
+    }
+
+    private func installCaptureTap(
+        on inputNode: AVAudioInputNode,
+        format inputFormat: AVAudioFormat,
+        converter: BuddyPCM16AudioConverter,
+        sampleRate: Double
+    ) {
         let client = self.realtimeClient
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
@@ -1103,18 +1355,48 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
                 client.sendInputAudioPCM16(pcmData, sampleRate: Int(sampleRate))
             }
         }
+    }
 
-        engine.prepare()
-        try engine.start()
-        self.captureEngine = engine
+    /// True while either the duplex voice-processing engine or the AVCaptureSession mic is running.
+    private var isMicrophoneCaptureActive: Bool {
+        isLegacyMicrophoneCaptureRunning || captureEngine?.isRunning == true
     }
 
     private func stopMicCapture() {
+        legacyMicrophoneCaptureInput.stop()
+        isLegacyMicrophoneCaptureRunning = false
         captureEngine?.inputNode.removeTap(onBus: 0)
-        captureEngine?.stop()
+        if isDuplexVoiceProcessingActive {
+            // The duplex engine also plays audio; give playback a clean non-voice-processing engine again.
+            isDuplexVoiceProcessingActive = false
+            playerNode.stop()
+            captureEngine?.stop()
+            playbackEngine = AVAudioEngine()
+            playerNode = AVAudioPlayerNode()
+            configurePlaybackEngineGraph()
+        } else {
+            captureEngine?.stop()
+        }
         captureEngine = nil
         captureConverter = nil
         currentAudioPowerLevel = 0
+    }
+
+    /// Reports a dead mic (exact digital silence for several seconds).
+    private func evaluateCaptureHealth(rms: Float) {
+        guard isMicrophoneCaptureActive else { return }
+        let now = Date()
+        if rms > 0 { lastNonSilentInputAt = now }
+        guard !hasReportedDeadMicrophone,
+              ClickyMicrophoneHealth.isInputDead(
+                captureStartedAt: captureStartedAt,
+                lastNonSilentInputAt: lastNonSilentInputAt,
+                now: now
+              ) else { return }
+        hasReportedDeadMicrophone = true
+        lastErrorMessage = ClickyMicrophoneProblem.deadDevice(
+            name: ClickyAudioTopologyMonitor.shared.snapshot.inputDeviceName
+        ).userFacingMessage
     }
 
     private nonisolated func updatePowerLevel(from buffer: AVAudioPCMBuffer) {
@@ -1133,6 +1415,7 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.currentAudioPowerLevel = max(level, self.currentAudioPowerLevel * 0.72)
+            self.evaluateCaptureHealth(rms: rms)
         }
     }
 
@@ -1168,6 +1451,8 @@ public final class RealtimeVoiceController: NSObject, ObservableObject, AVSpeech
 
     private static let realtimeSystemInstructions = """
     You are Clicky, a warm, direct macOS voice companion. Keep spoken answers concise and natural for the ear (1-3 short sentences unless asked to explain deeply). Avoid markdown, bullet points, or emojis.
+
+    You can see the user's screen, point at things and draw on it ONLY by calling the use_screen tool. Never describe the screen, point or draw without calling it. Never say tags or code aloud. When a tool returns, say its result to the user in your own words, briefly. For long-running work call start_background_job.
     """
 
     private static func turnBasedSystemInstructions(languageCode: String) -> String {

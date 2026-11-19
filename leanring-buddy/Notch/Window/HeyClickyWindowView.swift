@@ -25,7 +25,10 @@ struct HeyClickyWindowView: View {
     @State private var attachedFileURLs: [URL] = []
     @State private var isDropTargeted: Bool = false
     @State private var isShowingNewClickySheet: Bool = false
+    @State private var sidebarNoticeText: String?
+    @ObservedObject private var liveNoteWatcher = ClickyLiveNoteWatcher.shared
     @State private var dragStartDocumentWidth: CGFloat? = nil
+    @State private var lastStreamingScrollDate: Date = .distantPast
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -46,6 +49,8 @@ struct HeyClickyWindowView: View {
                 .stroke(DS.Colors.borderSubtle, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onAppear { ClickyLiveNoteWatcher.shared.beginObserving() }
+        .onDisappear { ClickyLiveNoteWatcher.shared.endObserving() }
         .sheet(isPresented: $isShowingNewClickySheet) {
             NewClickySheet { createdProfile in
                 windowController.selectThread(slug: createdProfile.slug)
@@ -348,6 +353,8 @@ struct HeyClickyWindowView: View {
         return VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: DS.Spacing.md) {
+                    sidebarSummaryLine
+
                     // Main HeyClicky Thread
                     yourChatSidebarRow
 
@@ -467,7 +474,7 @@ struct HeyClickyWindowView: View {
         let latestActivity = latestJob.map { $0.finishedAt ?? $0.createdAt }
         let hasUnreadJob = slugJobs.contains { job in !job.isSeen && job.outcome != .working }
         let isUnread = !isSelected && (roster.isUnread(slug: profile.slug, latestActivityAt: latestActivity) || hasUnreadJob)
-        let isWorking = isWorkingSection || slugJobs.contains { job in job.outcome == .working || job.waitingStep != nil }
+        let isWorking = isWorkingSection || slugJobs.contains { job in job.outcome == .working || job.isWaitingStepFlagged() }
 
         return Button {
             windowController.selectThread(slug: profile.slug)
@@ -519,6 +526,64 @@ struct HeyClickyWindowView: View {
         }
         .buttonStyle(.plain)
         .pointerCursor()
+        .contextMenu {
+            if let latestJob {
+                sidebarJobContextMenu(for: latestJob)
+            }
+        }
+    }
+
+    /// Archive is refused while the agent is working; "Stop and remove" stops it first.
+    @ViewBuilder
+    private func sidebarJobContextMenu(for job: ClickyJob) -> some View {
+        Button("Archive") {
+            if !jobStore.archiveJob(jobID: job.id) {
+                showSidebarNotice(String(localized: "Stop the agent before archiving it."))
+            }
+        }
+        if job.outcome == .working {
+            Button("Stop and remove from the dock") {
+                companionManager.stopActiveAgentTask(jobID: job.id)
+                jobStore.dismissJob(jobID: job.id)
+            }
+        } else {
+            Button("Remove from the dock") {
+                jobStore.dismissJob(jobID: job.id)
+            }
+        }
+    }
+
+    private func showSidebarNotice(_ message: String) {
+        sidebarNoticeText = message
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if sidebarNoticeText == message { sidebarNoticeText = nil }
+        }
+    }
+
+    /// "2 need you" / "1 job working" summary shown above the sidebar rows.
+    @ViewBuilder
+    private var sidebarSummaryLine: some View {
+        let needsYouCount = jobStore.visibleJobs.filter { $0.railPhase == .needsYou }.count
+        let workingCount = jobStore.visibleJobs.filter { $0.outcome == .working && $0.railPhase != .needsYou }.count
+        if needsYouCount > 0 || workingCount > 0 || sidebarNoticeText != nil {
+            VStack(alignment: .leading, spacing: 2) {
+                if needsYouCount > 0 {
+                    Text("\(needsYouCount) need you")
+                        .foregroundColor(DS.Colors.warningText)
+                }
+                if workingCount > 0 {
+                    Text("\(workingCount) jobs working")
+                        .foregroundColor(DS.Colors.textSecondary)
+                }
+                if let sidebarNoticeText {
+                    Text(sidebarNoticeText)
+                        .foregroundColor(DS.Colors.warningText)
+                }
+            }
+            .font(.system(size: 11, weight: .medium))
+            .padding(.horizontal, 8)
+        }
     }
 
     private func groupedSidebarProfiles() -> (working: [ClickyProfile], recents: [ClickyProfile], earlier: [ClickyProfile]) {
@@ -538,7 +603,7 @@ struct HeyClickyWindowView: View {
         for profile in roster.clickys {
             let slugJobs = jobStore.jobs(forClickySlug: profile.slug)
             let isWorking = slugJobs.contains { job in
-                !job.isArchived && !job.isDismissed && (job.outcome == .working || job.waitingStep != nil)
+                !job.isArchived && !job.isDismissed && (job.outcome == .working || job.isWaitingStepFlagged())
             }
             if isWorking {
                 working.append(profile)
@@ -702,6 +767,16 @@ struct HeyClickyWindowView: View {
                 }
             }
 
+            if let pendingHandoff = companionManager.pendingHandoffRequest {
+                ClickyHandoffConfirmCard(request: pendingHandoff) { approved in
+                    if approved {
+                        companionManager.approvePendingHandoff()
+                    } else {
+                        companionManager.declinePendingHandoff()
+                    }
+                }
+            }
+
             if let docNotice = companionManager.activeDocumentNotice {
                 DocumentAccessNoticeCard(
                     notice: docNotice,
@@ -721,6 +796,7 @@ struct HeyClickyWindowView: View {
     private var hasInlineBanners: Bool {
         uploadApproval.pendingRequest != nil
             || takeOverController.pendingConsent != nil
+            || companionManager.pendingHandoffRequest != nil
             || companionManager.activeDocumentNotice != nil
     }
 
@@ -740,7 +816,9 @@ struct HeyClickyWindowView: View {
     private var transcriptScrollArea: some View {
         ScrollViewReader { scrollProxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: DS.Spacing.md) {
+                // Plain VStack: a LazyVStack re-estimating rows whose height changes while streaming
+                // (typing dots, growing text) can spin SwiftUI layout forever and freeze the app.
+                VStack(alignment: .leading, spacing: DS.Spacing.md) {
                     if let profile = selectedProfile {
                         clickyTranscriptContent(profile: profile)
                     } else {
@@ -758,6 +836,16 @@ struct HeyClickyWindowView: View {
                 withAnimation(.easeOut(duration: 0.2)) {
                     scrollProxy.scrollTo("transcript-bottom-anchor", anchor: .bottom)
                 }
+            }
+            // Keep the newest line in view while the reply streams in (throttled).
+            .onChange(of: companionManager.chatMessages.last?.text) { _, _ in
+                let now = Date()
+                guard ClickyChatStreamingScroll.shouldScroll(
+                    secondsSinceLastScroll: now.timeIntervalSince(lastStreamingScrollDate)
+                ) else { return }
+                lastStreamingScrollDate = now
+                // No animation: animated scrolls stacking with streaming layout changes can loop layout.
+                scrollProxy.scrollTo("transcript-bottom-anchor", anchor: .bottom)
             }
             .onChange(of: jobStore.jobs) { _, _ in
                 withAnimation(.easeOut(duration: 0.2)) {
@@ -883,11 +971,31 @@ struct HeyClickyWindowView: View {
             )
         }
         return AnyView(
-            assistantBubbleView(
-                text: message.text,
-                timestamp: message.timestamp,
-                artifactPaths: message.artifactPaths
-            )
+            VStack(alignment: .leading, spacing: 6) {
+                NotchActivityLedgerView(activityLines: message.activity)
+
+                if ClickyChatActivityLedger.shouldShowTypingDots(role: message.role, text: message.text) {
+                    NotchTypingDotsView()
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 10)
+                        .transition(.opacity)
+                } else {
+                    assistantBubbleView(
+                        text: message.text,
+                        timestamp: message.timestamp,
+                        artifactPaths: message.artifactPaths
+                    )
+                    .transition(.opacity)
+                }
+
+                if let drawingID = message.drawingID {
+                    NotchChatDrawingRow(drawingID: drawingID) {
+                        companionManager.detachDrawingFromChat(messageID: message.id)
+                    }
+                    .frame(maxWidth: 580, alignment: .leading)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: message.text.isEmpty)
         )
     }
 
@@ -898,13 +1006,13 @@ struct HeyClickyWindowView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(text)
                     .font(.system(size: 13))
-                    .foregroundColor(.white)
+                    .foregroundColor(DS.Colors.textPrimary)
                     .textSelection(.enabled)
                     .padding(.horizontal, 13)
                     .padding(.vertical, 9)
                     .background(
                         RoundedRectangle(cornerRadius: DS.CornerRadius.large, style: .continuous)
-                            .fill(DS.Colors.helpChatUserBubble)
+                            .fill(DS.Colors.surface3)
                     )
 
                 if let timestamp {
@@ -1136,6 +1244,8 @@ struct HeyClickyWindowView: View {
         return !trimmed.isEmpty || !attachedFileURLs.isEmpty
     }
 
+    @State private var runAsBackgroundJob = false
+
     private var composerArea: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             if !attachedFileURLs.isEmpty {
@@ -1183,82 +1293,21 @@ struct HeyClickyWindowView: View {
                 }
             }
 
-            HStack(alignment: .bottom, spacing: DS.Spacing.sm) {
-                Button {
-                    presentFilePicker()
-                } label: {
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 13, weight: .medium))
-                }
-                .dsIconButtonStyle(size: 30, tooltip: "Attach Files", tooltipAlignment: .leading)
-
-                TextField(
-                    selectedProfile == nil ? "Message HeyClicky or drop files..." : "Message \(selectedProfile?.name ?? "Clicky")...",
-                    text: $companionManager.textInputDraft,
-                    axis: .vertical
-                )
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .foregroundColor(DS.Colors.textPrimary)
-                .lineLimit(1...5)
-                .focused($isComposerFocused)
-                .onSubmit {
-                    submitComposer(asBackgroundTask: selectedProfile != nil)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: DS.CornerRadius.large, style: .continuous)
-                        .fill(DS.Colors.surface2)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: DS.CornerRadius.large, style: .continuous)
-                        .stroke(isComposerFocused ? DS.Colors.borderStrong : DS.Colors.borderSubtle, lineWidth: 1)
-                )
-
-                Button {
-                    submitComposer(asBackgroundTask: false)
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(canSendMessage ? DS.Colors.textOnAccent : DS.Colors.disabledText)
-                        .frame(width: 30, height: 30)
-                        .background(
-                            Circle()
-                                .fill(canSendMessage ? DS.Colors.accent : DS.Colors.disabledBackground)
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSendMessage)
-                .pointerCursor(isEnabled: canSendMessage)
-                .nativeTooltip("Send Chat Message")
-
-                Button {
-                    submitComposer(asBackgroundTask: true)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Run")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundColor(canSendMessage ? DS.Colors.textPrimary : DS.Colors.disabledText)
-                    .padding(.horizontal, 10)
-                    .frame(height: 30)
-                    .background(
-                        Capsule()
-                            .fill(canSendMessage ? DS.Colors.surface3 : DS.Colors.disabledBackground)
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(canSendMessage ? DS.Colors.borderStrong : DS.Colors.borderSubtle, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSendMessage)
-                .pointerCursor(isEnabled: canSendMessage)
-                .nativeTooltip("Run as Background Clicky Agent Task")
-            }
+            ClickyChatComposerBar(
+                companionManager: companionManager,
+                draftText: $companionManager.textInputDraft,
+                placeholder: selectedProfile == nil
+                    ? String(localized: "Message Clicky or drop files...")
+                    : String(localized: "Message \(selectedProfile?.name ?? "Clicky")..."),
+                runAsBackgroundJob: $runAsBackgroundJob,
+                // Messages to a selected Clicky always run as its job, so the toggle would do nothing.
+                showsBackgroundJobToggle: selectedProfile == nil,
+                canSubmitWithoutText: !attachedFileURLs.isEmpty,
+                onAttach: { presentFilePicker() },
+                onStop: { companionManager.stopCurrentTurnFromChat() },
+                onSubmit: { submitComposer(asBackgroundTask: runAsBackgroundJob || selectedProfile != nil) },
+                isInputFocused: $isComposerFocused
+            )
         }
         .padding(.horizontal, DS.Spacing.md)
         .padding(.vertical, 10)
@@ -1272,6 +1321,13 @@ struct HeyClickyWindowView: View {
                 .stroke(isDropTargeted ? DS.Colors.accent : Color.clear, lineWidth: 1.5)
                 .padding(4)
         )
+        .overlay {
+            if isDropTargeted {
+                Text("Drop to attach")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(DS.Colors.accentText)
+            }
+        }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDroppedFileProviders(providers)
         }

@@ -359,6 +359,10 @@ public final class ClickyAppDriver {
         copyAXStringAttribute(element, attribute: kAXRoleAttribute as String)
     }
 
+    public func elementSubrole(_ element: AXUIElement) -> String? {
+        copyAXStringAttribute(element, attribute: kAXSubroleAttribute as String)
+    }
+
     public func elementTitle(_ element: AXUIElement) -> String? {
         copyAXStringAttribute(element, attribute: kAXTitleAttribute as String)
             ?? copyAXStringAttribute(element, attribute: kAXDescriptionAttribute as String)

@@ -17,6 +17,7 @@ public enum ClickyShortcutSlot: String, CaseIterable, Codable, Identifiable, Sen
     case textTrigger
     case dictationHold
     case handsFreeDictation
+    case regionCapture
 
     public var id: String { rawValue }
 
@@ -26,6 +27,7 @@ public enum ClickyShortcutSlot: String, CaseIterable, Codable, Identifiable, Sen
         case .textTrigger: return "Text Trigger"
         case .dictationHold: return "Dictation Hold (Type Anywhere)"
         case .handsFreeDictation: return "Hands-Free Dictation (Toggle)"
+        case .regionCapture: return String(localized: "Capture a Region")
         }
     }
 }
@@ -110,7 +112,7 @@ public struct ClickyShortcutBinding: Codable, Equatable, Sendable {
 
     public var displayText: String {
         if triggerMode == .doubleTapModifier, let first = modifiers.first {
-            return "double-tap \(first.displayName)"
+            return String(localized: "\(first.displayName), pressed twice")
         }
         return keyCapsuleLabels.joined(separator: " + ")
     }
@@ -144,6 +146,14 @@ public struct ClickyShortcutBinding: Codable, Equatable, Sendable {
                 modifiers: [.function],
                 keyCode: nil,
                 isEnabled: true
+            ),
+            // No default keys: the user opts in by recording a shortcut in Settings.
+            .regionCapture: ClickyShortcutBinding(
+                slot: .regionCapture,
+                triggerMode: .holdCombo,
+                modifiers: [],
+                keyCode: nil,
+                isEnabled: false
             )
         ]
     }
@@ -154,7 +164,8 @@ public struct ClickyShortcutBinding: Codable, Equatable, Sendable {
         case 36: return "return"
         case 48: return "tab"
         case 53: return "esc"
-        default: return "key(\(keyCode))"
+        case 117: return String(localized: "Forward Delete")
+        default: return String(localized: "Key #\(Int(keyCode))")
         }
     }
 }
@@ -478,6 +489,10 @@ final class GlobalPushToTalkShortcutMonitor: ObservableObject {
         }
         if slot == .textTrigger {
             emitSlotEvent(.triggered(slot: .textTrigger))
+        }
+        if slot == .regionCapture {
+            emitSlotEvent(.triggered(slot: .regionCapture))
+            ClickyRegionCaptureController.shared.begin()
         }
         emitSlotEvent(.pressed(slot: slot))
     }

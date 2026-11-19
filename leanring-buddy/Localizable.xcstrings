@@ -1,0 +1,5261 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "·" : {
+
+    },
+    "· %@" : {
+
+    },
+    "\"%@\" is not a valid environment variable name." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" bukan nama variabel lingkungan yang valid."
+          }
+        }
+      }
+    },
+    "\"%@\" is not a valid header name." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" bukan nama header yang valid."
+          }
+        }
+      }
+    },
+    "\"%@\" wasn't found on this Mac. Use the full path, or install it first." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" tidak ditemukan di Mac ini. Gunakan path lengkap, atau instal dulu."
+          }
+        }
+      }
+    },
+    "(showing first %lld of %lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "(showing first %1$lld of %2$lld)"
+          }
+        }
+      }
+    },
+    "#" : {
+
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ already uses %@. Use different environment variable names or remove that connector first." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sudah memakai %@. Gunakan nama variabel lingkungan yang berbeda atau hapus konektor itu dulu."
+          }
+        }
+      }
+    },
+    "%@ is done." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sudah selesai."
+          }
+        }
+      }
+    },
+    "%@ is done. %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ sudah selesai. %2$@"
+          }
+        }
+      }
+    },
+    "%@ is on it." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sedang mengerjakannya."
+          }
+        }
+      }
+    },
+    "%@ isn't sending audio" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tidak mengirim audio"
+          }
+        }
+      }
+    },
+    "%@ Live Note" : {
+
+    },
+    "%@ needs you." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ butuh kamu."
+          }
+        }
+      }
+    },
+    "%@ stopped sending audio" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ berhenti mengirim audio"
+          }
+        }
+      }
+    },
+    "%@ wants to upload to %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ wants to upload to %2$@"
+          }
+        }
+      }
+    },
+    "%@, pressed twice" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, ditekan dua kali"
+          }
+        }
+      }
+    },
+    "%@:" : {
+
+    },
+    "%@'s connected! i can use the sites you're signed into now ^_^" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ terhubung! sekarang aku bisa memakai situs yang sudah kamu masuki ^_^"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld × %lld px" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld × %2$lld px"
+          }
+        }
+      }
+    },
+    "%lld armed" : {
+
+    },
+    "%lld files are ready" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld file is ready"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld files are ready"
+                }
+              }
+            }
+          }
+        },
+        "id" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld file siap"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld file siap"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld jobs working" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld job working"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld jobs working"
+                }
+              }
+            }
+          }
+        },
+        "id" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld pekerjaan berjalan"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld pekerjaan berjalan"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld need you" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld needs you"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld need you"
+                }
+              }
+            }
+          }
+        },
+        "id" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld perlu kamu"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld perlu kamu"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld of %lld · %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld dari %2$lld · %3$@"
+          }
+        }
+      }
+    },
+    "%lld of %lld steps complete" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld dari %lld langkah selesai"
+          }
+        }
+      }
+    },
+    "%lld paused" : {
+
+    },
+    "%lld regions queued" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld area masuk antrean"
+          }
+        }
+      }
+    },
+    "%lld rows × %lld cols" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld rows × %2$lld cols"
+          }
+        }
+      }
+    },
+    "%lld runs" : {
+
+    },
+    "%lld unread" : {
+
+    },
+    "%lld vision · %lld total" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld vision · %2$lld total"
+          }
+        }
+      }
+    },
+    "%lld." : {
+
+    },
+    "%lld/%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld/%2$lld"
+          }
+        }
+      }
+    },
+    "%lld%%" : {
+
+    },
+    "• %@" : {
+
+    },
+    "+ %lld more file(s)" : {
+
+    },
+    "+ Key" : {
+
+    },
+    "99+" : {
+
+    },
+    "A job is using %@ right now, in a tab group next to yours." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sebuah tugas sedang memakai %@ sekarang, di grup tab di sebelah tabmu."
+          }
+        }
+      }
+    },
+    "A job's reply shows in a bubble next to your cursor when it finishes." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balasan job muncul di gelembung di samping kursor saat selesai."
+          }
+        }
+      }
+    },
+    "A side project I made for fun to help me learn stuff as I use my computer." : {
+
+    },
+    "A skill file has to be a Markdown (.md) file." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File skill harus berupa file Markdown (.md)."
+          }
+        }
+      }
+    },
+    "A skill is a new superpower for Clicky. Tell it what to learn and it studies up like a real expert." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skill adalah kekuatan super baru untuk Clicky. Beri tahu apa yang perlu dipelajari dan Clicky akan mendalaminya seperti seorang ahli sungguhan."
+          }
+        }
+      }
+    },
+    "Accessibility" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aksesibilitas"
+          }
+        }
+      }
+    },
+    "Account: %@" : {
+
+    },
+    "Activate Skill" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktifkan Skill"
+          }
+        }
+      }
+    },
+    "Active & Recent Work" : {
+
+    },
+    "Active Provider" : {
+
+    },
+    "Active Routines" : {
+
+    },
+    "Active skills become part of Clicky, shaping its answers and guiding every agent it runs for you." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skill yang aktif menjadi bagian dari Clicky, membentuk jawabannya dan memandu setiap agen yang dijalankannya untukmu."
+          }
+        }
+      }
+    },
+    "Add" : {
+
+    },
+    "Add and enable Clicky in Screen & System Audio Recording, not System Audio Recording Only. If you used the audio-only list, add it to the screen-recording list too." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambahkan dan aktifkan Clicky di Perekaman Layar & Audio Sistem, bukan Perekaman Audio Sistem Saja. Jika Anda memakai daftar khusus audio, tambahkan juga ke daftar perekaman layar."
+          }
+        }
+      }
+    },
+    "Add connector" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambah konektor"
+          }
+        }
+      }
+    },
+    "Add custom connector" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambah konektor kustom"
+          }
+        }
+      }
+    },
+    "Add standing preference..." : {
+
+    },
+    "Add the Clicky extension from the Chrome Web Store: %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambahkan ekstensi Clicky dari Chrome Web Store: %@"
+          }
+        }
+      }
+    },
+    "Advanced" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lanjutan"
+          }
+        }
+      }
+    },
+    "ADVANCED" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LANJUTAN"
+          }
+        }
+      }
+    },
+    "Afternoon, %@." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siang, %@."
+          }
+        }
+      }
+    },
+    "Agent folder" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folder agent"
+          }
+        }
+      }
+    },
+    "Agent Model" : {
+
+    },
+    "Agent thread failed." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thread agen gagal."
+          }
+        }
+      }
+    },
+    "Agents" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent"
+          }
+        }
+      }
+    },
+    "AGENTS" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AGEN"
+          }
+        }
+      }
+    },
+    "AI Transcript Cleanup" : {
+
+    },
+    "All 3 skill slots are full. Tap one to swap it out for \"%@\":" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ketiga slot skill penuh. Ketuk salah satu untuk menggantinya dengan \"%@\":"
+          }
+        }
+      }
+    },
+    "Allow file upload?" : {
+
+    },
+    "Allow Screen Control" : {
+
+    },
+    "Always approve" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selalu setujui"
+          }
+        }
+      }
+    },
+    "Always approve file uploads" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selalu setujui unggahan file"
+          }
+        }
+      }
+    },
+    "always-on couldn't connect. check your internet connection, then triple-tap control to try again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "always-on tidak bisa terhubung. periksa koneksi internet Anda, lalu ketuk control tiga kali untuk mencoba lagi."
+          }
+        }
+      }
+    },
+    "always-on ended. it needs headphones and your audio just switched to speakers. reconnect headphones and triple-tap control to start it again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "always-on berakhir. butuh headphone dan audio Anda baru saja pindah ke speaker. sambungkan headphone lagi dan ketuk control tiga kali untuk memulai lagi."
+          }
+        }
+      }
+    },
+    "always-on needs headphones. plug them in and triple-tap control again. heads up: it's experimental, so expect some bugs." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "always-on butuh headphone. colokkan lalu ketuk control tiga kali lagi. catatan: ini eksperimental, jadi mungkin ada bug."
+          }
+        }
+      }
+    },
+    "always-on voice disconnected — triple-tap control to restart it." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "suara always-on terputus — ketuk control tiga kali untuk memulai ulang."
+          }
+        }
+      }
+    },
+    "Announcements" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengumuman"
+          }
+        }
+      }
+    },
+    "Another job is already waiting for your OK in the notch." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masih ada job lain yang menunggu persetujuanmu di notch."
+          }
+        }
+      }
+    },
+    "Answering…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menjawab…"
+          }
+        }
+      }
+    },
+    "API key" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci API"
+          }
+        }
+      }
+    },
+    "App language" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bahasa aplikasi"
+          }
+        }
+      }
+    },
+    "Approve this time" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setujui kali ini"
+          }
+        }
+      }
+    },
+    "Apps your agents can reach into." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aplikasi yang bisa dijangkau agent-mu."
+          }
+        }
+      }
+    },
+    "Archive" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arsipkan"
+          }
+        }
+      }
+    },
+    "Arguments" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Argumen"
+          }
+        }
+      }
+    },
+    "Ask %@ to research, build, or automate something…" : {
+
+    },
+    "Ask About Document" : {
+
+    },
+    "Ask before starting jobs" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tanya sebelum memulai tugas"
+          }
+        }
+      }
+    },
+    "Ask Clicky anything..." : {
+
+    },
+    "Ask Clicky…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tanya Clicky…"
+          }
+        }
+      }
+    },
+    "Ask HeyClicky anything" : {
+
+    },
+    "Ask HeyClicky…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tanya HeyClicky…"
+          }
+        }
+      }
+    },
+    "Assign a background agent task…" : {
+
+    },
+    "Attach files" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lampirkan file"
+          }
+        }
+      }
+    },
+    "Authentication" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autentikasi"
+          }
+        }
+      }
+    },
+    "Auto-Detect Dictation Language" : {
+
+    },
+    "Auto-dismiss countdown" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hitung mundur tutup otomatis"
+          }
+        }
+      }
+    },
+    "Auto-installs after %lldm idle, or restart now to update." : {
+
+    },
+    "Automatic" : {
+
+    },
+    "Automatically recognize spoken language during push-to-talk and Type Anywhere dictation." : {
+
+    },
+    "Autonomy" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otonomi"
+          }
+        }
+      }
+    },
+    "Back" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kembali"
+          }
+        }
+      }
+    },
+    "Background Agent Model" : {
+
+    },
+    "Badge Icon" : {
+
+    },
+    "Bahasa Indonesia" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bahasa Indonesia"
+          }
+        }
+      }
+    },
+    "Browser & Security" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Browser & Keamanan"
+          }
+        }
+      }
+    },
+    "Bugs, ideas, anything — I read every message." : {
+
+    },
+    "Cancel" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batal"
+          }
+        }
+      }
+    },
+    "Capture a Region" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tangkap Area"
+          }
+        }
+      }
+    },
+    "Capture a Region…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tangkap Area…"
+          }
+        }
+      }
+    },
+    "Capture the frontmost document, PDF, or browser tab to ask questions about it." : {
+
+    },
+    "Captures active screen context only when triggered" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menangkap konteks layar aktif hanya saat dipicu"
+          }
+        }
+      }
+    },
+    "Change Key" : {
+
+    },
+    "Changing the server or client ID clears its saved credentials. Save, then sign in again or add the new key." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengubah server atau client ID menghapus kredensial tersimpan. Simpan, lalu masuk lagi atau tambahkan kunci baru."
+          }
+        }
+      }
+    },
+    "Chat" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan"
+          }
+        }
+      }
+    },
+    "Checked %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dicek %@"
+          }
+        }
+      }
+    },
+    "Checking that Clicky can see your screen…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memeriksa apakah Clicky bisa melihat layar Anda…"
+          }
+        }
+      }
+    },
+    "Choose suggestion: %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pilih saran: %@"
+          }
+        }
+      }
+    },
+    "Chrome connected" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chrome terhubung"
+          }
+        }
+      }
+    },
+    "Chrome Web Store Setup" : {
+
+    },
+    "claude-sonnet-4-6" : {
+
+    },
+    "Clear" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus"
+          }
+        }
+      }
+    },
+    "Clear All How-Tos" : {
+
+    },
+    "Clear Key" : {
+
+    },
+    "Click Grant Access to verify screen capture. Mac may ask you to allow it." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klik Beri Akses untuk memverifikasi tangkapan layar. Mac mungkin meminta Anda mengizinkannya."
+          }
+        }
+      }
+    },
+    "Click Remove on that old card and confirm Remove." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klik Hapus pada kartu lama itu dan konfirmasi Hapus."
+          }
+        }
+      }
+    },
+    "Clicked %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengklik %@"
+          }
+        }
+      }
+    },
+    "Clicked the highlighted spot" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengklik titik yang ditandai"
+          }
+        }
+      }
+    },
+    "Clicky" : {
+
+    },
+    "Clicky %@ is ready" : {
+
+    },
+    "Clicky can do this step on your screen while you watch." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicky bisa mengerjakan langkah ini di layarmu sementara kamu melihat."
+          }
+        }
+      }
+    },
+    "Clicky can't hear you. Try different microphone." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicky tidak bisa mendengar Anda. Coba mikrofon lain."
+          }
+        }
+      }
+    },
+    "Clicky can't hear your microphone" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicky tidak bisa mendengar mikrofon Anda"
+          }
+        }
+      }
+    },
+    "Clicky couldn't set up the browser connection: %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicky tidak bisa menyiapkan koneksi browser: %@"
+          }
+        }
+      }
+    },
+    "Clicky follows your Mac's language by default. Changes apply after relaunch." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicky mengikuti bahasa Mac Anda secara default. Perubahan berlaku setelah aplikasi dibuka ulang."
+          }
+        }
+      }
+    },
+    "Clicky needs Screen Recording access to capture a region. Turn it on in System Settings > Privacy & Security > Screen Recording." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicky memerlukan akses Perekaman Layar untuk menangkap area. Aktifkan di Pengaturan Sistem > Privasi & Keamanan > Perekaman Layar."
+          }
+        }
+      }
+    },
+    "Clicky Settings" : {
+
+    },
+    "Clicky's agent runner couldn't start, so this job didn't run. %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent runner Clicky tidak bisa mulai, jadi pekerjaan ini tidak berjalan. %@"
+          }
+        }
+      }
+    },
+    "Closes this card. Today's ideas stay in Suggestions." : {
+
+    },
+    "Color" : {
+
+    },
+    "Come back tomorrow for fresh ideas." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kembali besok untuk ide-ide segar."
+          }
+        }
+      }
+    },
+    "Command on this Mac" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perintah di Mac ini"
+          }
+        }
+      }
+    },
+    "Completed all %lld steps" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semua %lld langkah selesai"
+          }
+        }
+      }
+    },
+    "Configure system-wide shortcuts monitored via CGEvent tap. Press Esc anytime to interrupt active voice output." : {
+
+    },
+    "Connected browsers: %@" : {
+
+    },
+    "Connecting voice…" : {
+
+    },
+    "Connection & AI" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksi & AI"
+          }
+        }
+      }
+    },
+    "connection dropped mid-response — push to talk to try again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "koneksi terputus di tengah respons — tekan untuk bicara untuk mencoba lagi."
+          }
+        }
+      }
+    },
+    "connection dropped mid-response — try again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "koneksi terputus di tengah respons — coba lagi."
+          }
+        }
+      }
+    },
+    "Connection Mode" : {
+
+    },
+    "Connectors" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konektor"
+          }
+        }
+      }
+    },
+    "CONNECTORS" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KONEKTOR"
+          }
+        }
+      }
+    },
+    "Copied" : {
+
+    },
+    "Copied to your clipboard" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disalin ke clipboard Anda"
+          }
+        }
+      }
+    },
+    "Copy" : {
+
+    },
+    "Copy response" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salin jawaban"
+          }
+        }
+      }
+    },
+    "Could not load suggestions. We’ll try again in a little while." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa memuat saran. Kami akan mencoba lagi sebentar lagi."
+          }
+        }
+      }
+    },
+    "Could not save the drawing as video" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa menyimpan gambar sebagai video"
+          }
+        }
+      }
+    },
+    "Could not start microphone test" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tes mikrofon tidak bisa dimulai"
+          }
+        }
+      }
+    },
+    "Couldn't capture that region" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa menangkap area itu"
+          }
+        }
+      }
+    },
+    "Couldn't delete the skill." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa menghapus skill."
+          }
+        }
+      }
+    },
+    "Couldn't open the microphone" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa membuka mikrofon"
+          }
+        }
+      }
+    },
+    "Couldn't start skill creation." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa memulai pembuatan skill."
+          }
+        }
+      }
+    },
+    "Couldn't start the microphone." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa menyalakan mikrofon."
+          }
+        }
+      }
+    },
+    "couldn't start voice input. try again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tidak bisa memulai input suara. coba lagi."
+          }
+        }
+      }
+    },
+    "couldn't transcribe that. try again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tidak bisa mentranskripsi itu. coba lagi."
+          }
+        }
+      }
+    },
+    "Couldn't update the skill." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa memperbarui skill."
+          }
+        }
+      }
+    },
+    "Countdown in the notch 5 minutes before a calendar event." : {
+
+    },
+    "Create a New Clicky" : {
+
+    },
+    "Create a persistent specialist agent with its own workspace & memory." : {
+
+    },
+    "CREATE A SKILL" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BUAT SKILL"
+          }
+        }
+      }
+    },
+    "Create Clicky" : {
+
+    },
+    "Create my skill" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buat skill-ku"
+          }
+        }
+      }
+    },
+    "CREATED BY YOU" : {
+
+    },
+    "CSV" : {
+
+    },
+    "Cursor" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kursor"
+          }
+        }
+      }
+    },
+    "Cursor Accent Color" : {
+
+    },
+    "Custom" : {
+
+    },
+    "Custom connectors are any MCP server: a hosted URL or a command on this Mac. Tokens stay in your Keychain and are handed only to Clicky's agents." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konektor kustom adalah server MCP apa pun: URL hosting atau perintah di Mac ini. Token tetap di Keychain kamu dan hanya diberikan ke agen Clicky."
+          }
+        }
+      }
+    },
+    "Deactivate all attached skills" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nonaktifkan semua skill yang terpasang"
+          }
+        }
+      }
+    },
+    "Delete" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus"
+          }
+        }
+      }
+    },
+    "Dictation" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte"
+          }
+        }
+      }
+    },
+    "Dictation failed. Try again" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte gagal. Coba lagi"
+          }
+        }
+      }
+    },
+    "Disable" : {
+
+    },
+    "Dismiss" : {
+
+    },
+    "Document" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokumen"
+          }
+        }
+      }
+    },
+    "Don't ask again" : {
+
+    },
+    "Don't send yet" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jangan kirim dulu"
+          }
+        }
+      }
+    },
+    "Don't show again" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jangan tampilkan lagi"
+          }
+        }
+      }
+    },
+    "Done" : {
+
+    },
+    "Done." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selesai."
+          }
+        }
+      }
+    },
+    "Draft" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draf"
+          }
+        }
+      }
+    },
+    "Draft. Open it with the pencil and read it before turning it on." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draf. Buka dengan ikon pensil dan baca dulu sebelum mengaktifkannya."
+          }
+        }
+      }
+    },
+    "Drag Clicky into the Accessibility list." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seret Clicky ke daftar Aksesibilitas."
+          }
+        }
+      }
+    },
+    "Drag into “Screen & System Audio Recording”, not the audio-only list." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seret ke “Perekaman Layar & Audio Sistem”, bukan daftar khusus audio."
+          }
+        }
+      }
+    },
+    "Drag me into Screen Recording." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seret saya ke Perekaman Layar."
+          }
+        }
+      }
+    },
+    "Drag to capture screenshot  •  Esc or right-click to cancel" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seret untuk menangkap tangkapan layar  •  Esc atau klik kanan untuk batal"
+          }
+        }
+      }
+    },
+    "Drawing" : {
+
+    },
+    "Drawing: %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gambar: %@"
+          }
+        }
+      }
+    },
+    "Drawings" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gambar"
+          }
+        }
+      }
+    },
+    "Driving screen…" : {
+
+    },
+    "Drop to attach" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jatuhkan untuk melampirkan"
+          }
+        }
+      }
+    },
+    "Drove your Mac" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengendalikan Mac kamu"
+          }
+        }
+      }
+    },
+    "e.g. -y some-mcp-server --flag value" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mis. -y some-mcp-server --flag value"
+          }
+        }
+      }
+    },
+    "e.g. https://mcp.example.com/mcp" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mis. https://mcp.example.com/mcp"
+          }
+        }
+      }
+    },
+    "e.g. Meta Ads" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mis. Meta Ads"
+          }
+        }
+      }
+    },
+    "e.g. npx" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mis. npx"
+          }
+        }
+      }
+    },
+    "Edit %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ubah %@"
+          }
+        }
+      }
+    },
+    "EDIT CONNECTOR" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UBAH KONEKTOR"
+          }
+        }
+      }
+    },
+    "Edit skill" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit skill"
+          }
+        }
+      }
+    },
+    "ElevenLabs Voice ID" : {
+
+    },
+    "Empty spreadsheet" : {
+
+    },
+    "Enable" : {
+
+    },
+    "Enable Accessibility for Clicky to insert dictation." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktifkan Aksesibilitas untuk Clicky agar bisa memasukkan dikte."
+          }
+        }
+      }
+    },
+    "End Voice" : {
+
+    },
+    "English" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inggris"
+          }
+        }
+      }
+    },
+    "Enter agent model ID" : {
+
+    },
+    "Enter Anthropic API key" : {
+
+    },
+    "Enter AssemblyAI API key" : {
+
+    },
+    "Enter Brave Search API key" : {
+
+    },
+    "Enter ElevenLabs API key" : {
+
+    },
+    "Enter Gemini API key" : {
+
+    },
+    "Enter Google OAuth Client ID" : {
+
+    },
+    "Enter Google OAuth Client Secret" : {
+
+    },
+    "Enter model ID" : {
+
+    },
+    "Enter OpenAI API key" : {
+
+    },
+    "Enter OpenCodex Bearer Token" : {
+
+    },
+    "Enter the command that starts the server." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masukkan perintah yang menjalankan server."
+          }
+        }
+      }
+    },
+    "Enter the server's full URL, starting with https://." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masukkan URL lengkap server, diawali https://."
+          }
+        }
+      }
+    },
+    "Environment variables" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Variabel lingkungan"
+          }
+        }
+      }
+    },
+    "Evening, %@." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Malam, %@."
+          }
+        }
+      }
+    },
+    "Everything after the command, quoted like a shell." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semua setelah perintah, dengan tanda kutip seperti shell."
+          }
+        }
+      }
+    },
+    "Everything you ask, by voice or by typing, lives here." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semua yang kamu tanyakan, lewat suara atau ketikan, ada di sini."
+          }
+        }
+      }
+    },
+    "Expand" : {
+
+    },
+    "Extra headers" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header tambahan"
+          }
+        }
+      }
+    },
+    "Filter 133 languages..." : {
+
+    },
+    "Filter rows..." : {
+
+    },
+    "Find App" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cari Aplikasi"
+          }
+        }
+      }
+    },
+    "Finding suggestions…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mencari saran…"
+          }
+        }
+      }
+    },
+    "Finish in %@: add Clicky from the Chrome Web Store. It connects by itself." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selesaikan di %@: tambahkan Clicky dari Chrome Web Store. Terhubung sendiri."
+          }
+        }
+      }
+    },
+    "Fit" : {
+
+    },
+    "Follow up…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tanya lanjutan…"
+          }
+        }
+      }
+    },
+    "Follow-up" : {
+
+    },
+    "Forward Delete" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus Maju"
+          }
+        }
+      }
+    },
+    "Fresh task ideas every morning in your notch." : {
+
+    },
+    "Fresh task suggestions every 24 hours, based on what you do." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saran tugas baru setiap 24 jam, berdasarkan aktivitasmu."
+          }
+        }
+      }
+    },
+    "General" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umum"
+          }
+        }
+      }
+    },
+    "Get new extension" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dapatkan ekstensi baru"
+          }
+        }
+      }
+    },
+    "Give the connector a name." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beri nama pada konektor."
+          }
+        }
+      }
+    },
+    "Give your companion a name, role, and workspace." : {
+
+    },
+    "Global shortcuts, Type Anywhere dictation, and app control" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pintasan global, dikte Type Anywhere, dan kontrol aplikasi"
+          }
+        }
+      }
+    },
+    "Good afternoon." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selamat siang."
+          }
+        }
+      }
+    },
+    "Good evening." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selamat malam."
+          }
+        }
+      }
+    },
+    "Good morning." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selamat pagi."
+          }
+        }
+      }
+    },
+    "google-antigravity/gemini-3.8-flash" : {
+
+    },
+    "Got feedback? DM me" : {
+
+    },
+    "Grant" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan"
+          }
+        }
+      }
+    },
+    "Grant Access" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beri Akses"
+          }
+        }
+      }
+    },
+    "Granted" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diizinkan"
+          }
+        }
+      }
+    },
+    "Hands off the mouse while I drive. Esc stops me." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jangan sentuh mouse selagi aku mengemudi. Esc menghentikanku."
+          }
+        }
+      }
+    },
+    "Hands-free callout using local Apple Speech recognition; pauses automatically while speaking or recording." : {
+
+    },
+    "Hands-free dictating" : {
+
+    },
+    "Heard: \"%@\"" : {
+
+    },
+    "hey clicky (e.g. hey nora)" : {
+
+    },
+    "HeyClicky stays quiet while you're on a call. Finished work waits in the chat and the notch shows how many jobs have something new." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HeyClicky tetap diam saat kamu sedang telepon. Pekerjaan yang selesai menunggu di chat, dan notch menunjukkan berapa job yang punya kabar baru."
+          }
+        }
+      }
+    },
+    "HeyClicky's voice tells you what a job got done." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara HeyClicky memberi tahu apa yang diselesaikan job."
+          }
+        }
+      }
+    },
+    "Hi, I'm Farza. This is Clicky." : {
+
+    },
+    "Hide Clicky's floating cursor triangle when idle and only reveal it during pointing or voice turns." : {
+
+    },
+    "Hide Floating Cursor" : {
+
+    },
+    "hmm, i couldn't finish researching %@. open the skills panel to take a look." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hmm, aku tidak bisa menyelesaikan riset %@. buka panel skill untuk melihatnya."
+          }
+        }
+      }
+    },
+    "Hold %@ and just start talking, or %@." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tahan %@ lalu langsung bicara, atau %@."
+          }
+        }
+      }
+    },
+    "Hold %@ and tell me what to take off your plate." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tahan %@ dan ceritakan apa yang bisa aku bantu kerjakan."
+          }
+        }
+      }
+    },
+    "Hold %@ to talk" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tahan %@ untuk bicara"
+          }
+        }
+      }
+    },
+    "Hold %@ to talk to Clicky" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tahan %@ untuk bicara dengan Clicky"
+          }
+        }
+      }
+    },
+    "Hold %@ to talk." : {
+
+    },
+    "Hold %@ to talk. Release to send." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tahan %@ untuk bicara. Lepas untuk mengirim."
+          }
+        }
+      }
+    },
+    "Hold to talk" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tahan untuk bicara"
+          }
+        }
+      }
+    },
+    "Home" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beranda"
+          }
+        }
+      }
+    },
+    "Home Space" : {
+
+    },
+    "How agents use your browser, and what stays off limits." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cara agent memakai browser-mu, dan apa yang tetap terlarang."
+          }
+        }
+      }
+    },
+    "How HeyClicky behaves on your Mac." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cara HeyClicky bekerja di Mac-mu."
+          }
+        }
+      }
+    },
+    "How HeyClicky speaks. Changes apply from the next spoken reply." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cara HeyClicky berbicara. Perubahan berlaku mulai balasan suara berikutnya."
+          }
+        }
+      }
+    },
+    "http://127.0.0.1:10100/v1" : {
+
+    },
+    "https://api.heyclicky.com" : {
+
+    },
+    "I can do %lld things for you today" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada %lld hal yang bisa kukerjakan untukmu hari ini"
+          }
+        }
+      }
+    },
+    "I can do 1 thing for you today" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada 1 hal yang bisa kukerjakan untukmu hari ini"
+          }
+        }
+      }
+    },
+    "I can play songs on Spotify" : {
+
+    },
+    "I can't hear your microphone. Is it muted or unplugged?" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak bisa mendengar mikrofon Anda. Apakah dibisukan atau dicabut?"
+          }
+        }
+      }
+    },
+    "I can't reach %@ from this network. A firewall, proxy or DNS filter seems to be blocking it, so I can't answer until that changes." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak bisa menjangkau %@ dari jaringan ini. Firewall, proxy, atau filter DNS tampaknya memblokirnya, jadi saya tidak bisa menjawab sampai itu berubah."
+          }
+        }
+      }
+    },
+    "I can't see the screen right now." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku tidak bisa melihat layar sekarang."
+          }
+        }
+      }
+    },
+    "I can't start a job during the tour." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku tidak bisa memulai job selama tur."
+          }
+        }
+      }
+    },
+    "I couldn't drop that straight into the field, so it's on your clipboard. Press Command V to paste it." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak bisa langsung memasukkannya ke kolom, jadi ada di clipboard Anda. Tekan Command V untuk menempelkannya."
+          }
+        }
+      }
+    },
+    "I couldn't finish that step." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku tidak bisa menyelesaikan langkah itu."
+          }
+        }
+      }
+    },
+    "I couldn't hear that, my speech connection dropped. Try again in a moment, or type it instead." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak bisa mendengarnya, koneksi suara saya terputus. Coba lagi sebentar lagi, atau ketik saja."
+          }
+        }
+      }
+    },
+    "I couldn't start a job for that, so nothing was started." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku tidak bisa memulai job untuk itu, jadi belum ada yang dimulai."
+          }
+        }
+      }
+    },
+    "I couldn't start a job for that, so nothing was started. Ask me again and I'll start one." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku tidak bisa memulai tugas untuk itu, jadi belum ada yang dimulai. Tanya lagi dan aku akan memulainya."
+          }
+        }
+      }
+    },
+    "I couldn't take a test screenshot. Try again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak bisa mengambil tangkapan layar uji. Coba lagi."
+          }
+        }
+      }
+    },
+    "I couldn't work out the next move, so I stopped there." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku tidak bisa menentukan langkah berikutnya, jadi aku berhenti di sini."
+          }
+        }
+      }
+    },
+    "I didn't catch that. Hold the keys while you talk, then let go." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak menangkapnya. Tahan tombolnya saat Anda bicara, lalu lepaskan."
+          }
+        }
+      }
+    },
+    "I didn't fill that in, it's a password field, so type that one yourself." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak mengisinya, itu kolom kata sandi, jadi ketik sendiri ya."
+          }
+        }
+      }
+    },
+    "I didn't fill that in, that field didn't look safe to type into." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak mengisinya, kolom itu tampak tidak aman untuk diketik."
+          }
+        }
+      }
+    },
+    "I hit my limit for one step, so I stopped there." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku sudah mencapai batas untuk satu langkah, jadi aku berhenti di sini."
+          }
+        }
+      }
+    },
+    "I lost the connection partway, so I stopped there." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksiku putus di tengah jalan, jadi aku berhenti di situ."
+          }
+        }
+      }
+    },
+    "I need a yes to use your Mac" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku butuh izinmu untuk memakai Mac-mu"
+          }
+        }
+      }
+    },
+    "I pasted it, but I couldn't see it show up in the field, so check it's there." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sudah saya tempel, tetapi tidak terlihat muncul di kolom, jadi periksa apakah sudah ada."
+          }
+        }
+      }
+    },
+    "I stopped because another app came to the front." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya berhenti karena ada aplikasi lain yang muncul di depan."
+          }
+        }
+      }
+    },
+    "I stopped there: %@. It's yours." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku berhenti di situ: %@. Sekarang milikmu."
+          }
+        }
+      }
+    },
+    "I won't type into a password field." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saya tidak akan mengetik di kolom kata sandi."
+          }
+        }
+      }
+    },
+    "I'm already driving your Mac." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aku sedang mengendalikan Mac-mu."
+          }
+        }
+      }
+    },
+    "Icon Prop" : {
+
+    },
+    "If macOS asks you to Quit & Reopen after enabling access, follow that prompt." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika macOS meminta Keluar & Buka Ulang setelah mengaktifkan akses, ikuti permintaan itu."
+          }
+        }
+      }
+    },
+    "Import .md…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impor .md…"
+          }
+        }
+      }
+    },
+    "In Downloads" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada di Unduhan"
+          }
+        }
+      }
+    },
+    "Initializing HeyClicky..." : {
+
+    },
+    "INPUT DEVICE" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PERANGKAT INPUT"
+          }
+        }
+      }
+    },
+    "INSIDE THIS SKILL" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ISI SKILL INI"
+          }
+        }
+      }
+    },
+    "Install / Repair Chrome Host" : {
+
+    },
+    "Install Update & Relaunch" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasang Pembaruan & Buka Ulang"
+          }
+        }
+      }
+    },
+    "Integrations" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integrasi"
+          }
+        }
+      }
+    },
+    "Invalid dictation response." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Respons dikte tidak valid."
+          }
+        }
+      }
+    },
+    "It finished. Open it to see what it did." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sudah selesai. Buka untuk melihat hasilnya."
+          }
+        }
+      }
+    },
+    "It timed out waiting to be ready." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waktu habis menunggu siap."
+          }
+        }
+      }
+    },
+    "Join" : {
+
+    },
+    "Keep “%@” in Home → Drawings" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Simpan “%@” di Beranda → Gambar"
+          }
+        }
+      }
+    },
+    "Keeping the agent going..." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menjaga agen tetap jalan..."
+          }
+        }
+      }
+    },
+    "Key #%lld" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tombol #%lld"
+          }
+        }
+      }
+    },
+    "Language" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bahasa"
+          }
+        }
+      }
+    },
+    "LANGUAGE" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BAHASA"
+          }
+        }
+      }
+    },
+    "Languages and the words HeyClicky should spell right." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bahasa dan kata yang harus dieja benar oleh HeyClicky."
+          }
+        }
+      }
+    },
+    "Last run failed" : {
+
+    },
+    "Later" : {
+
+    },
+    "Latest reply" : {
+
+    },
+    "Launch a task above or click any Clicky below to start working together." : {
+
+    },
+    "Launch at Login" : {
+
+    },
+    "Launch tasks, check active Clickys, and manage your routines." : {
+
+    },
+    "Let Clicky drive" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biarkan Clicky mengemudi"
+          }
+        }
+      }
+    },
+    "Let Clicky take one test screenshot." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biarkan Clicky mengambil satu tangkapan layar uji."
+          }
+        }
+      }
+    },
+    "Let jobs add files from your Mac to websites without asking each turn. Keys, keychains and browser profiles stay off limits." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan tugas menambahkan file dari Mac kamu ke situs web tanpa bertanya tiap giliran. Kunci, keychain, dan profil browser tetap terlarang."
+          }
+        }
+      }
+    },
+    "Listen for Wake Phrase" : {
+
+    },
+    "Listening" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mendengarkan"
+          }
+        }
+      }
+    },
+    "Listening… click to send" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mendengarkan… klik untuk kirim"
+          }
+        }
+      }
+    },
+    "Live Note" : {
+
+    },
+    "Live Note · %@" : {
+
+    },
+    "Live Voice" : {
+
+    },
+    "Looked at an image" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melihat sebuah gambar"
+          }
+        }
+      }
+    },
+    "Looked at your screen" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melihat layarmu"
+          }
+        }
+      }
+    },
+    "Looking for fresh ideas. This can take 5–10 minutes." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mencari ide segar. Ini bisa memakan waktu 5–10 menit."
+          }
+        }
+      }
+    },
+    "Mac can require a relaunch after you toggle Screen Recording on." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac bisa memerlukan buka ulang setelah Anda mengaktifkan Perekaman Layar."
+          }
+        }
+      }
+    },
+    "macOS permissions HeyClicky's agents inherit. Tap one to review it in System Settings." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izin macOS yang diwarisi agent HeyClicky. Ketuk salah satunya untuk meninjaunya di System Settings."
+          }
+        }
+      }
+    },
+    "Meeting starting soon: %@" : {
+
+    },
+    "Memory" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memori"
+          }
+        }
+      }
+    },
+    "Message %@..." : {
+
+    },
+    "Message Clicky or drop files..." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim pesan ke Clicky atau jatuhkan file..."
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
+          }
+        }
+      }
+    },
+    "Microphone access is off" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akses mikrofon mati"
+          }
+        }
+      }
+    },
+    "Microphone capture failed" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perekaman mikrofon gagal"
+          }
+        }
+      }
+    },
+    "Microphone disconnected" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon terputus"
+          }
+        }
+      }
+    },
+    "Microphone permission is off" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izin mikrofon mati"
+          }
+        }
+      }
+    },
+    "microphone permission is required for push to talk." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "izin mikrofon diperlukan untuk tekan untuk bicara."
+          }
+        }
+      }
+    },
+    "Model" : {
+
+    },
+    "Model: %@" : {
+
+    },
+    "Morning, %@." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pagi, %@."
+          }
+        }
+      }
+    },
+    "My AI provider's safety filter blocked this because it looks like hands-on security work. I can still explain the concepts." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter keamanan penyedia AI saya memblokir ini karena tampak seperti pekerjaan keamanan praktis. Saya masih bisa menjelaskan konsepnya."
+          }
+        }
+      }
+    },
+    "MY SKILLS" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SKILL SAYA"
+          }
+        }
+      }
+    },
+    "My voice connection didn't open, so I wrote the answer instead." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksi suara saya tidak terbuka, jadi saya tulis jawabannya saja."
+          }
+        }
+      }
+    },
+    "Needs a yes" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perlu jawaban ya"
+          }
+        }
+      }
+    },
+    "Needs your OK to keep going" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perlu persetujuanmu untuk lanjut"
+          }
+        }
+      }
+    },
+    "New Clicky" : {
+
+    },
+    "NEW CONNECTOR" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KONEKTOR BARU"
+          }
+        }
+      }
+    },
+    "Next %@" : {
+
+    },
+    "Next suggestion" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saran berikutnya"
+          }
+        }
+      }
+    },
+    "Next: %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berikutnya: %@"
+          }
+        }
+      }
+    },
+    "No active document captured yet" : {
+
+    },
+    "No active tasks right now" : {
+
+    },
+    "No background tasks yet" : {
+
+    },
+    "No learned how-tos yet. As Clicky completes jobs, reusable setup tips appear here." : {
+
+    },
+    "No live note content yet." : {
+
+    },
+    "No microphone available to capture from." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada mikrofon yang tersedia untuk merekam."
+          }
+        }
+      }
+    },
+    "No microphone found" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon tidak ditemukan"
+          }
+        }
+      }
+    },
+    "No next run" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada jadwal berikutnya"
+          }
+        }
+      }
+    },
+    "No scheduled routines yet. Ask any Clicky to repeat a task on a schedule to create one." : {
+
+    },
+    "No scheduled routines yet. Ask any Clicky to run a task on a schedule." : {
+
+    },
+    "No skills available yet." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada skill."
+          }
+        }
+      }
+    },
+    "No tasks in \"%@\"" : {
+
+    },
+    "No thanks." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak, terima kasih."
+          }
+        }
+      }
+    },
+    "No work yet" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada pekerjaan"
+          }
+        }
+      }
+    },
+    "None" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada"
+          }
+        }
+      }
+    },
+    "Not now" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nanti saja"
+          }
+        }
+      }
+    },
+    "Not Now" : {
+
+    },
+    "Not now because…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum sekarang karena…"
+          }
+        }
+      }
+    },
+    "Not set" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum diatur"
+          }
+        }
+      }
+    },
+    "Not set up" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum disiapkan"
+          }
+        }
+      }
+    },
+    "Not Signed In" : {
+
+    },
+    "Notch" : {
+
+    },
+    "Nothing runs in the background. Clicky will only take a screenshot when you press the hot key. So, you can give that permission in peace. If you are still sus, eh, I can't do much there champ." : {
+
+    },
+    "Offline" : {
+
+    },
+    "Okay, it's all yours." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oke, sekarang semuanya milikmu."
+          }
+        }
+      }
+    },
+    "One per line, like API_TOKEN=value. Kept in your Keychain." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satu per baris, seperti API_TOKEN=nilai. Disimpan di Keychain kamu."
+          }
+        }
+      }
+    },
+    "One per line, like X-Api-Key: value." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satu per baris, seperti X-Api-Key: nilai."
+          }
+        }
+      }
+    },
+    "One step on your Mac: %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satu langkah di Mac-mu: %@"
+          }
+        }
+      }
+    },
+    "Online" : {
+
+    },
+    "Online · %lld ms" : {
+
+    },
+    "Only takes a screenshot when you use the hotkey" : {
+
+    },
+    "Open" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka"
+          }
+        }
+      }
+    },
+    "Open %@ extensions and find the old Clicky preview copy (turned off, unpacked, or showing an error)." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka ekstensi %@ dan cari salinan pratinjau Clicky yang lama (nonaktif, unpacked, atau menampilkan error)."
+          }
+        }
+      }
+    },
+    "Open App" : {
+
+    },
+    "Open chat" : {
+
+    },
+    "Open doc" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka dokumen"
+          }
+        }
+      }
+    },
+    "Open Extensions" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka Ekstensi"
+          }
+        }
+      }
+    },
+    "Open Externally" : {
+
+    },
+    "Open folder" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka folder"
+          }
+        }
+      }
+    },
+    "Open HeyClicky Window" : {
+
+    },
+    "Open image" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka gambar"
+          }
+        }
+      }
+    },
+    "Open in a window" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka di jendela"
+          }
+        }
+      }
+    },
+    "Open in Browser" : {
+
+    },
+    "Open in Chat" : {
+
+    },
+    "Open in Default App" : {
+
+    },
+    "Open in Document Pane" : {
+
+    },
+    "Open in Finder" : {
+
+    },
+    "Open microphone settings to pick a working mic" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka pengaturan mikrofon untuk memilih mikrofon yang berfungsi"
+          }
+        }
+      }
+    },
+    "Open page" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka halaman"
+          }
+        }
+      }
+    },
+    "Open PDF" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka PDF"
+          }
+        }
+      }
+    },
+    "Open Privacy Settings" : {
+
+    },
+    "Open Settings" : {
+
+    },
+    "Open sheet" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka spreadsheet"
+          }
+        }
+      }
+    },
+    "Open slides" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka slide"
+          }
+        }
+      }
+    },
+    "Open System Settings" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka Pengaturan Sistem"
+          }
+        }
+      }
+    },
+    "Optional Bearer Token" : {
+
+    },
+    "Paste the API key, or pick a different authentication." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempel kunci API, atau pilih autentikasi lain."
+          }
+        }
+      }
+    },
+    "Paste your key" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempel kunci kamu"
+          }
+        }
+      }
+    },
+    "Pause" : {
+
+    },
+    "Pause (space)" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeda (spasi)"
+          }
+        }
+      }
+    },
+    "Pause auto-dismiss" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeda tutup otomatis"
+          }
+        }
+      }
+    },
+    "Paused" : {
+
+    },
+    "PERMISSIONS" : {
+
+    },
+    "Permissions needed" : {
+
+    },
+    "Pick an action below  •  Esc or right-click to cancel" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pilih tindakan di bawah  •  Esc atau klik kanan untuk batal"
+          }
+        }
+      }
+    },
+    "Pin to the side of the screen" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sematkan ke sisi layar"
+          }
+        }
+      }
+    },
+    "Pinned card: %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kartu tersemat: %@"
+          }
+        }
+      }
+    },
+    "Play “%@” again in a window" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Putar “%@” lagi di jendela"
+          }
+        }
+      }
+    },
+    "Play (space)" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Putar (spasi)"
+          }
+        }
+      }
+    },
+    "Play again" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Putar lagi"
+          }
+        }
+      }
+    },
+    "Play audio" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Putar audio"
+          }
+        }
+      }
+    },
+    "Play it full screen over your screen" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Putar layar penuh di atas layarmu"
+          }
+        }
+      }
+    },
+    "Play it in a window" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Putar di jendela"
+          }
+        }
+      }
+    },
+    "Play on a white board" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Putar di papan tulis putih"
+          }
+        }
+      }
+    },
+    "Play subtle acoustic chimes on agent launch, completion, and button feedback." : {
+
+    },
+    "Play video" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Putar video"
+          }
+        }
+      }
+    },
+    "Playbooks HeyClicky follows for your kind of work." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panduan yang diikuti HeyClicky untuk jenis pekerjaanmu."
+          }
+        }
+      }
+    },
+    "Polish punctuation and filler words before pasting dictated text." : {
+
+    },
+    "Pop Out" : {
+
+    },
+    "press %@ to type instead" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tekan %@ untuk mengetik"
+          }
+        }
+      }
+    },
+    "Press ⌘V to paste" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tekan ⌘V untuk menempel"
+          }
+        }
+      }
+    },
+    "Press Enter to save" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tekan Enter untuk menyimpan"
+          }
+        }
+      }
+    },
+    "Press Key..." : {
+
+    },
+    "Press the modifiers you want…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tekan tombol pengubah yang Anda inginkan…"
+          }
+        }
+      }
+    },
+    "Previous suggestion" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saran sebelumnya"
+          }
+        }
+      }
+    },
+    "Profile" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profil"
+          }
+        }
+      }
+    },
+    "Project: %@" : {
+
+    },
+    "Queued" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antre"
+          }
+        }
+      }
+    },
+    "Queued to start" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antre untuk mulai"
+          }
+        }
+      }
+    },
+    "Quick Task Launcher" : {
+
+    },
+    "Quit & Reopen Clicky" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keluar & Buka Ulang Clicky"
+          }
+        }
+      }
+    },
+    "Quit and reopen after granting" : {
+
+    },
+    "Quit Clicky" : {
+
+    },
+    "Read a file" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membaca sebuah file"
+          }
+        }
+      }
+    },
+    "Read answers aloud" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bacakan jawaban"
+          }
+        }
+      }
+    },
+    "Ready to view" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siap dilihat"
+          }
+        }
+      }
+    },
+    "Reconnecting %lld/%lld..." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menyambung ulang %lld/%lld..."
+          }
+        }
+      }
+    },
+    "Reconnecting to the model…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menyambung ulang ke model…"
+          }
+        }
+      }
+    },
+    "Recording %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merekam %@"
+          }
+        }
+      }
+    },
+    "Recording it as it plays…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merekamnya saat diputar…"
+          }
+        }
+      }
+    },
+    "Refresh" : {
+
+    },
+    "Refresh Status" : {
+
+    },
+    "Refresh suggestions" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Segarkan saran"
+          }
+        }
+      }
+    },
+    "Region queued" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Area masuk antrean"
+          }
+        }
+      }
+    },
+    "Relaunch now" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka ulang sekarang"
+          }
+        }
+      }
+    },
+    "Reload" : {
+
+    },
+    "Remote URL" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL remote"
+          }
+        }
+      }
+    },
+    "Remove credentials from the URL and use the authentication fields." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus kredensial dari URL dan gunakan kolom autentikasi."
+          }
+        }
+      }
+    },
+    "Remove from the chat (it stays in Drawings)" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus dari chat (tetap ada di Gambar)"
+          }
+        }
+      }
+    },
+    "Remove from the dock" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus dari dock"
+          }
+        }
+      }
+    },
+    "Remove this skill" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus skill ini"
+          }
+        }
+      }
+    },
+    "Replay Tour" : {
+
+    },
+    "Report a Bug…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laporkan Bug…"
+          }
+        }
+      }
+    },
+    "Request a Feature…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minta Fitur…"
+          }
+        }
+      }
+    },
+    "Researching and writing your skill…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meneliti dan menulis skill-mu…"
+          }
+        }
+      }
+    },
+    "Reset to Defaults" : {
+
+    },
+    "Resume" : {
+
+    },
+    "Retrying after a hiccup…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mencoba lagi setelah ada kendala…"
+          }
+        }
+      }
+    },
+    "Reveal in Finder" : {
+
+    },
+    "Routines" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rutinitas"
+          }
+        }
+      }
+    },
+    "Run" : {
+
+    },
+    "Run as a background job" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jalankan sebagai job latar belakang"
+          }
+        }
+      }
+    },
+    "Run Now" : {
+
+    },
+    "Run Task" : {
+
+    },
+    "Runs: %lld" : {
+
+    },
+    "Same as Mac" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sama seperti Mac"
+          }
+        }
+      }
+    },
+    "Save" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Simpan"
+          }
+        }
+      }
+    },
+    "Save drawing" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Simpan gambar"
+          }
+        }
+      }
+    },
+    "Save Memory" : {
+
+    },
+    "Save this drawing as a video in your Downloads folder (it plays through once while it records)" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Simpan gambar ini sebagai video di folder Unduhan (gambar diputar sekali sambil direkam)"
+          }
+        }
+      }
+    },
+    "Saved" : {
+
+    },
+    "Saved the drawing" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menyimpan gambar"
+          }
+        }
+      }
+    },
+    "Saving the video…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menyimpan video…"
+          }
+        }
+      }
+    },
+    "Say hi to Clicky" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sapa Clicky"
+          }
+        }
+      }
+    },
+    "Scan Active Document" : {
+
+    },
+    "Screen Content" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konten Layar"
+          }
+        }
+      }
+    },
+    "Screen content is ready." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konten layar sudah siap."
+          }
+        }
+      }
+    },
+    "screen control ended" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kendali layar berakhir"
+          }
+        }
+      }
+    },
+    "Screen Recording" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perekaman Layar"
+          }
+        }
+      }
+    },
+    "Screen Recording permission needed" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izin Perekaman Layar diperlukan"
+          }
+        }
+      }
+    },
+    "Screen, voice & quick answers" : {
+
+    },
+    "ScreenCaptureKit permission for multi-monitor snapshots" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izin ScreenCaptureKit untuk tangkapan beberapa monitor"
+          }
+        }
+      }
+    },
+    "Search dictation languages..." : {
+
+    },
+    "Selected: %@" : {
+
+    },
+    "Selected: %@ [%@]" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Selected: %1$@ [%2$@]"
+          }
+        }
+      }
+    },
+    "Send" : {
+
+    },
+    "Send a quick follow-up…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim tindak lanjut singkat…"
+          }
+        }
+      }
+    },
+    "Send with text" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim dengan teks"
+          }
+        }
+      }
+    },
+    "Send with voice" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim dengan suara"
+          }
+        }
+      }
+    },
+    "Server URL" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL server"
+          }
+        }
+      }
+    },
+    "Setting it up. It connects by itself once it's added to %@." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sedang disiapkan. Terhubung sendiri setelah ditambahkan ke %@."
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengaturan"
+          }
+        }
+      }
+    },
+    "Setup failed" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Penyiapan gagal"
+          }
+        }
+      }
+    },
+    "Setup failed: %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Penyiapan gagal: %@"
+          }
+        }
+      }
+    },
+    "Shared across voice and agent turns. Stored at %@." : {
+
+    },
+    "Shortcuts" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pintasan"
+          }
+        }
+      }
+    },
+    "Show Big" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan Besar"
+          }
+        }
+      }
+    },
+    "Show in chat" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan di chat"
+          }
+        }
+      }
+    },
+    "Show in Finder" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan di Finder"
+          }
+        }
+      }
+    },
+    "Show the video in Finder" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan video di Finder"
+          }
+        }
+      }
+    },
+    "Show updates beside the cursor" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan kabar di samping kursor"
+          }
+        }
+      }
+    },
+    "Sign In with Google" : {
+
+    },
+    "Sign Out" : {
+
+    },
+    "Signed In" : {
+
+    },
+    "Signing In..." : {
+
+    },
+    "Skill Active" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skill Aktif"
+          }
+        }
+      }
+    },
+    "Skill creation is taking too long. It may still finish — check your library later, or try again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pembuatan skill terlalu lama. Mungkin masih selesai — cek pustakamu nanti, atau coba lagi."
+          }
+        }
+      }
+    },
+    "Skills" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skill"
+          }
+        }
+      }
+    },
+    "Some permissions were revoked. Grant all four below to keep using Clicky." : {
+
+    },
+    "Something went wrong" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada yang salah"
+          }
+        }
+      }
+    },
+    "Something went wrong partway through." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada yang salah di tengah jalan."
+          }
+        }
+      }
+    },
+    "Something went wrong while researching and writing this skill. Remove it and try again. Your notes aren't saved here, so keep a copy if they were long." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terjadi kesalahan saat meneliti dan menulis skill ini. Hapus lalu coba lagi. Catatanmu tidak disimpan di sini, jadi simpan salinannya jika panjang."
+          }
+        }
+      }
+    },
+    "Something went wrong." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada yang salah."
+          }
+        }
+      }
+    },
+    "Sorry, I couldn't get an answer just now. Try asking me again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maaf, saya belum bisa mendapat jawaban. Coba tanya lagi."
+          }
+        }
+      }
+    },
+    "Speak normally — the bars should move as Clicky hears you. Bluetooth headset mics switch the headset to low-quality call audio, so the Mac's built-in mic is used until you pick another." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bicara seperti biasa — bar akan bergerak saat Clicky mendengarmu. Mic headset Bluetooth membuat headset pindah ke audio telepon berkualitas rendah, jadi mic bawaan Mac dipakai sampai kamu memilih yang lain."
+          }
+        }
+      }
+    },
+    "Speak when a job starts or finishes" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bicara saat job mulai atau selesai"
+          }
+        }
+      }
+    },
+    "Speaking" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berbicara"
+          }
+        }
+      }
+    },
+    "Speech audio upload stalled." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unggahan audio ucapan macet."
+          }
+        }
+      }
+    },
+    "Speech final transcript timed out." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkrip akhir ucapan kehabisan waktu."
+          }
+        }
+      }
+    },
+    "speech recognition permission is required for push to talk." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "izin pengenalan suara diperlukan untuk tekan untuk bicara."
+          }
+        }
+      }
+    },
+    "Speech Speed" : {
+
+    },
+    "Start" : {
+
+    },
+    "Start a background job?" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mulai tugas latar belakang?"
+          }
+        }
+      }
+    },
+    "Start job" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mulai tugas"
+          }
+        }
+      }
+    },
+    "Start with one line, like: make me an expert at editing YouTube videos." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mulai dengan satu baris, misalnya: jadikan aku ahli mengedit video YouTube."
+          }
+        }
+      }
+    },
+    "Started %@" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dimulai %@"
+          }
+        }
+      }
+    },
+    "Started a background job" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memulai tugas latar belakang"
+          }
+        }
+      }
+    },
+    "Starter" : {
+
+    },
+    "STARTER CLICKYS" : {
+
+    },
+    "Steering the agent…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengarahkan agen…"
+          }
+        }
+      }
+    },
+    "Stop" : {
+
+    },
+    "Stop and remove from the dock" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hentikan dan hapus dari dock"
+          }
+        }
+      }
+    },
+    "Stop test" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hentikan tes"
+          }
+        }
+      }
+    },
+    "Stop the agent before archiving it." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hentikan agen sebelum mengarsipkannya."
+          }
+        }
+      }
+    },
+    "Stop this task. The chat stays so you can retry." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hentikan tugas ini. Chat tetap ada supaya bisa dicoba lagi."
+          }
+        }
+      }
+    },
+    "Stopped before I finished" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berhenti sebelum aku selesai"
+          }
+        }
+      }
+    },
+    "Stopped before it finished." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berhenti sebelum selesai."
+          }
+        }
+      }
+    },
+    "Stopped by you." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dihentikan olehmu."
+          }
+        }
+      }
+    },
+    "Suggest agent tasks" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sarankan tugas agent"
+          }
+        }
+      }
+    },
+    "Suggestion %lld of %lld" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saran %lld dari %lld"
+          }
+        }
+      }
+    },
+    "Suggestions" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saran"
+          }
+        }
+      }
+    },
+    "System Default" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bawaan Sistem"
+          }
+        }
+      }
+    },
+    "Tactile Sound Effects" : {
+
+    },
+    "Take the drawing off the screen (or press Escape)" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Singkirkan gambar dari layar (atau tekan Escape)"
+          }
+        }
+      }
+    },
+    "Tap to test selected input" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ketuk untuk mengetes input yang dipilih"
+          }
+        }
+      }
+    },
+    "Tell Clicky why. It makes the next suggestions better." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beri tahu Clicky alasannya. Saran berikutnya jadi lebih baik."
+          }
+        }
+      }
+    },
+    "TEST" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TES"
+          }
+        }
+      }
+    },
+    "Test ElevenLabs Voice" : {
+
+    },
+    "Test microphone" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tes mikrofon"
+          }
+        }
+      }
+    },
+    "Testing Voice..." : {
+
+    },
+    "That matches one of your Clicky shortcuts. Pick a different combo." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Itu sama dengan salah satu pintasan Clicky Anda. Pilih kombinasi lain."
+          }
+        }
+      }
+    },
+    "That name is reserved. Pick a name that doesn't start with clicky." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nama itu dicadangkan. Pilih nama yang tidak diawali clicky."
+          }
+        }
+      }
+    },
+    "That region is outside the screen" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Area itu berada di luar layar"
+          }
+        }
+      }
+    },
+    "That reply wasn't heard" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balasan itu tidak terdengar"
+          }
+        }
+      }
+    },
+    "That skill file couldn't be read." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File skill itu tidak bisa dibaca."
+          }
+        }
+      }
+    },
+    "That skill file has no content." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File skill itu tidak punya isi."
+          }
+        }
+      }
+    },
+    "That skill file is too large." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File skill itu terlalu besar."
+          }
+        }
+      }
+    },
+    "The agent harness isn't set up in this build." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent harness belum disiapkan di versi ini."
+          }
+        }
+      }
+    },
+    "The answer is on your clipboard. Press ⌘V to paste" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jawabannya ada di clipboard Anda. Tekan ⌘V untuk menempel"
+          }
+        }
+      }
+    },
+    "The arguments have an unclosed quote." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Argumen memiliki tanda kutip yang belum ditutup."
+          }
+        }
+      }
+    },
+    "The guide will stay attached to System Settings while you drag Clicky into the list above. If the app does not show up automatically, reveal it in Finder and drag from there." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panduan ini akan menempel pada Pengaturan Sistem saat Anda menyeret Clicky ke daftar di atas. Jika aplikasi tidak muncul otomatis, tampilkan di Finder lalu seret dari sana."
+          }
+        }
+      }
+    },
+    "The HeyClicky cursor that lives on your screen." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kursor HeyClicky yang tinggal di layarmu."
+          }
+        }
+      }
+    },
+    "The keys that summon HeyClicky." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tombol untuk memanggil HeyClicky."
+          }
+        }
+      }
+    },
+    "The language HeyClicky shows and the language it speaks." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bahasa yang ditampilkan dan diucapkan HeyClicky."
+          }
+        }
+      }
+    },
+    "The model took too long to answer, so I stopped there." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelnya terlalu lama menjawab, jadi saya berhenti di situ."
+          }
+        }
+      }
+    },
+    "The previous run ended before its result was saved." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proses sebelumnya berakhir sebelum hasilnya tersimpan."
+          }
+        }
+      }
+    },
+    "The profile Clicky works in." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profil tempat Clicky bekerja."
+          }
+        }
+      }
+    },
+    "The screen changed before I could type that in, so ask me again and I'll put it there." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Layar berubah sebelum saya sempat mengetiknya, jadi tanya lagi dan saya akan memasukkannya."
+          }
+        }
+      }
+    },
+    "The speech connection was interrupted." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksi suara terputus."
+          }
+        }
+      }
+    },
+    "There's a new version of the extension that updates itself. Swap it in once and you're set." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada versi baru ekstensi yang memperbarui dirinya sendiri. Ganti sekali saja dan beres."
+          }
+        }
+      }
+    },
+    "Things HeyClicky does on repeat, on this Mac." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hal yang dikerjakan HeyClicky berulang kali di Mac ini."
+          }
+        }
+      }
+    },
+    "Thinking" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berpikir"
+          }
+        }
+      }
+    },
+    "This permanently removes the skill from the library. This can't be undone." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ini menghapus skill dari pustaka secara permanen. Tindakan ini tidak dapat dibatalkan."
+          }
+        }
+      }
+    },
+    "This server uses plain http, so its traffic is not encrypted." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server ini memakai http biasa, jadi lalu lintasnya tidak terenkripsi."
+          }
+        }
+      }
+    },
+    "Transcribing…" : {
+
+    },
+    "Translucent Frosted Panes" : {
+
+    },
+    "Trigger Mode" : {
+
+    },
+    "Try it" : {
+
+    },
+    "Try saying \"Play Good Morning by Kanye West on Spotify\"" : {
+
+    },
+    "TSV" : {
+
+    },
+    "Turn on Developer mode (top right of chrome://extensions)." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktifkan Mode pengembang (kanan atas chrome://extensions)."
+          }
+        }
+      }
+    },
+    "Turn your sound back on" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nyalakan kembali suara Anda"
+          }
+        }
+      }
+    },
+    "Type a question, drop a file, or hold your push-to-talk shortcut to speak with screen context." : {
+
+    },
+    "Type an answer" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ketik jawaban"
+          }
+        }
+      }
+    },
+    "Type below or hold your shortcut to ask Clicky anything." : {
+
+    },
+    "Upcoming meetings" : {
+
+    },
+    "Use translucent macOS vibrancy material on notch, settings, and companion panels." : {
+
+    },
+    "View in Chat" : {
+
+    },
+    "View suggestion: %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lihat saran: %@"
+          }
+        }
+      }
+    },
+    "Vision & Companion Model" : {
+
+    },
+    "Vision Model" : {
+
+    },
+    "Voice" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara"
+          }
+        }
+      }
+    },
+    "Voice ID" : {
+
+    },
+    "Voice Pipeline" : {
+
+    },
+    "Voice push-to-talk and live audio sessions" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push-to-talk suara dan sesi audio langsung"
+          }
+        }
+      }
+    },
+    "Waiting for Chrome" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menunggu Chrome"
+          }
+        }
+      }
+    },
+    "Waiting for microphone permission" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menunggu izin mikrofon"
+          }
+        }
+      }
+    },
+    "Waiting for network" : {
+
+    },
+    "Waiting for your answer" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menunggu jawabanmu"
+          }
+        }
+      }
+    },
+    "Web page captured without extracted text." : {
+
+    },
+    "What agents can reach" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yang bisa dijangkau agent"
+          }
+        }
+      }
+    },
+    "What HeyClicky remembers about you." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apa yang diingat HeyClicky tentang kamu."
+          }
+        }
+      }
+    },
+    "When off, Clicky starts a job as soon as you ask for one." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika nonaktif, Clicky langsung memulai tugas begitu kamu memintanya."
+          }
+        }
+      }
+    },
+    "Where agents spawn and put the things they make." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempat agent bekerja dan menyimpan hasil buatannya."
+          }
+        }
+      }
+    },
+    "Where agents work and how much rope they get." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempat agent bekerja dan seberapa besar kebebasannya."
+          }
+        }
+      }
+    },
+    "Which AI HeyClicky talks to and the keys it uses." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI yang dipakai HeyClicky dan kunci yang digunakannya."
+          }
+        }
+      }
+    },
+    "Which microphone Clicky listens through." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon yang dipakai Clicky untuk mendengarkan."
+          }
+        }
+      }
+    },
+    "Which microphone HeyClicky listens through." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon yang dipakai HeyClicky untuk mendengar."
+          }
+        }
+      }
+    },
+    "WORK" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KERJA"
+          }
+        }
+      }
+    },
+    "Working on it…" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sedang dikerjakan…"
+          }
+        }
+      }
+    },
+    "Working…" : {
+
+    },
+    "Works with Chrome, Edge, Brave, Arc and other Chrome-based browsers. Clicky's extension is in the Chrome Web Store." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekerja dengan Chrome, Edge, Brave, Arc, dan browser berbasis Chrome lainnya. Ekstensi Clicky ada di Chrome Web Store."
+          }
+        }
+      }
+    },
+    "Workspace" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruang kerja"
+          }
+        }
+      }
+    },
+    "Yes, do it" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya, kerjakan"
+          }
+        }
+      }
+    },
+    "You already have a connector with that name." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamu sudah punya konektor dengan nama itu."
+          }
+        }
+      }
+    },
+    "You can customize any name (e.g. \"hey nora\", \"halo clicky\") or list multiple phrases separated by commas (e.g. \"hey nora, nora\")." : {
+
+    },
+    "You stopped it before it finished." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamu menghentikannya sebelum selesai."
+          }
+        }
+      }
+    },
+    "You're all caught up" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semua sudah beres"
+          }
+        }
+      }
+    },
+    "You're all set. Hit Start to meet Clicky." : {
+
+    },
+    "your %@ skill is ready! open the skills panel to check it out." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "skill %@ milikmu sudah siap! buka panel skill untuk melihatnya."
+          }
+        }
+      }
+    },
+    "Your audio is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audiomu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your chat" : {
+
+    },
+    "Your Clickys" : {
+
+    },
+    "Your doc is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokumenmu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your file is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filemu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your folder is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foldermu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your image is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gambarmu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your Mac is muted" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac Anda dibisukan"
+          }
+        }
+      }
+    },
+    "Your Mac's keychain didn't save this connector's sign-in. Unlock your login keychain and try again." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keychain Mac kamu tidak menyimpan kredensial konektor ini. Buka kunci keychain login lalu coba lagi."
+          }
+        }
+      }
+    },
+    "Your microphone" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon Anda"
+          }
+        }
+      }
+    },
+    "Your page is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halamanmu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your PDF is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF-mu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your sheet is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spreadsheet-mu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your slides are ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slide-mu siap dibuka."
+          }
+        }
+      }
+    },
+    "Your sound is off. The reply was copied to your clipboard" : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suaramu mati. Balasannya sudah disalin ke clipboard"
+          }
+        }
+      }
+    },
+    "Your video is ready to open." : {
+      "localizations" : {
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Videomu siap dibuka."
+          }
+        }
+      }
+    },
+    "z" : {
+
+    }
+  },
+  "version" : "1.0"
+}

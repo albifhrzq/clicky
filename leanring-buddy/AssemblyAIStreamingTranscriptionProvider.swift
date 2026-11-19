@@ -122,6 +122,22 @@ final class AssemblyAIStreamingTranscriptionProvider: BuddyTranscriptionProvider
     }
 }
 
+/// AssemblyAI rejects audio messages shorter than 20 ms ("Input Duration Violation") or longer than
+/// 1000 ms. AVCaptureSession delivers ~5 ms buffers, so the session batches audio into 50 ms messages.
+nonisolated enum AssemblyAIAudioMessageBatching {
+    /// 16 kHz mono PCM16: 32 bytes per millisecond.
+    private static let bytesPerMillisecondOfPCM16Audio = 16_000 * 2 / 1000
+    static let minimumAudioMessageByteCount = 20 * bytesPerMillisecondOfPCM16Audio
+    static let preferredAudioMessageByteCount = 50 * bytesPerMillisecondOfPCM16Audio
+
+    /// The last message may be shorter than the 20 ms minimum; pad it with silence.
+    static func finalAudioMessage(fromPendingBytes pendingBytes: Data) -> Data? {
+        guard !pendingBytes.isEmpty else { return nil }
+        guard pendingBytes.count < minimumAudioMessageByteCount else { return pendingBytes }
+        return pendingBytes + Data(count: minimumAudioMessageByteCount - pendingBytes.count)
+    }
+}
+
 private nonisolated final class AssemblyAIStreamingTranscriptionSession: NSObject, BuddyStreamingTranscriptionSession, @unchecked Sendable {
     private struct MessageEnvelope: Decodable {
         let type: String
@@ -165,6 +181,8 @@ private nonisolated final class AssemblyAIStreamingTranscriptionSession: NSObjec
     private let urlSession: URLSession
 
     private var webSocketTask: URLSessionWebSocketTask?
+    /// PCM16 audio waiting for a full message; only touched on `sendQueue`.
+    nonisolated(unsafe) private var pendingAudioPCM16Bytes = Data()
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var hasResolvedReadyContinuation = false
     private var hasDeliveredFinalTranscript = false
@@ -217,18 +235,33 @@ private nonisolated final class AssemblyAIStreamingTranscriptionSession: NSObjec
         }
     }
 
-    func appendAudioBuffer(_ audioBuffer: AVAudioPCMBuffer) {
+    nonisolated func appendAudioBuffer(_ audioBuffer: AVAudioPCMBuffer) {
         guard let audioPCM16Data = audioPCM16Converter.convertToPCM16Data(from: audioBuffer),
               !audioPCM16Data.isEmpty else {
             return
         }
 
         sendQueue.async { [weak self] in
-            guard let self, let webSocketTask = self.webSocketTask else { return }
-            webSocketTask.send(.data(audioPCM16Data)) { [weak self] error in
-                if let error {
-                    self?.failSession(with: error)
-                }
+            guard let self else { return }
+            self.pendingAudioPCM16Bytes.append(audioPCM16Data)
+            guard self.pendingAudioPCM16Bytes.count >= AssemblyAIAudioMessageBatching.preferredAudioMessageByteCount else { return }
+            self.sendAudioMessageOnSendQueue(self.pendingAudioPCM16Bytes)
+            self.pendingAudioPCM16Bytes = Data()
+        }
+    }
+
+    /// Sends whatever audio is still pending before the final transcript is requested.
+    nonisolated private func flushPendingAudioOnSendQueue() {
+        guard let finalAudioMessage = AssemblyAIAudioMessageBatching.finalAudioMessage(fromPendingBytes: pendingAudioPCM16Bytes) else { return }
+        pendingAudioPCM16Bytes = Data()
+        sendAudioMessageOnSendQueue(finalAudioMessage)
+    }
+
+    nonisolated private func sendAudioMessageOnSendQueue(_ audioMessageBytes: Data) {
+        guard let webSocketTask else { return }
+        webSocketTask.send(.data(audioMessageBytes)) { [weak self] error in
+            if let error {
+                self?.failSession(with: error)
             }
         }
     }
@@ -240,6 +273,10 @@ private nonisolated final class AssemblyAIStreamingTranscriptionSession: NSObjec
             self.scheduleExplicitFinalTranscriptDeadline()
         }
 
+        // sendQueue is serial, so the leftover audio goes out before ForceEndpoint.
+        sendQueue.async { [weak self] in
+            self?.flushPendingAudioOnSendQueue()
+        }
         sendJSONMessage(["type": "ForceEndpoint"])
     }
 

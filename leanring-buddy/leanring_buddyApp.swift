@@ -268,6 +268,13 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
             return await self.companionManager.executeScheduledRoutine(routine, trigger: trigger)
         }
         ClickyRoutineScheduler.shared.start()
+
+        // Notch extras: morning suggestions, upcoming-meeting countdown, one-time Spotify tip.
+        ClickyMorningSuggestionsMonitor.shared.start(companionManager: companionManager)
+        ClickyRegionCaptureController.shared.attach(companionManager: companionManager)
+        ClickyDriveStepExecutor.install()
+        ClickyUpcomingMeetingMonitor.shared.start(companionManager: companionManager)
+        ClickySpotifyTipMonitor.shared.start(companionManager: companionManager)
     }
 
     // MARK: - Login Item Registration

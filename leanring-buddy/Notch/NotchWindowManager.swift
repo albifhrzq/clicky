@@ -118,11 +118,13 @@ public nonisolated struct NotchScreenGeometry: Equatable, Sendable {
 
         // Graceful pill fallback centered at the top edge on non-notch displays.
         let fallbackWidth: CGFloat = 156
-        let fallbackHeight: CGFloat = 30
+        // Resting state is an invisible 156x22 hit area flush with the top edge (the visible handle is drawn inside it).
+        let fallbackHeight: CGFloat = 22
         let fallbackTopMargin: CGFloat = 6
+        let fallbackRestingTopMargin: CGFloat = 0
         let fallbackNotchRect = CGRect(
             x: screenFrame.midX - (fallbackWidth / 2),
-            y: screenFrame.maxY - fallbackHeight - fallbackTopMargin,
+            y: screenFrame.maxY - fallbackHeight - fallbackRestingTopMargin,
             width: fallbackWidth,
             height: fallbackHeight
         )
@@ -147,6 +149,38 @@ public nonisolated struct NotchScreenGeometry: Equatable, Sendable {
         )
     }
 
+    /// Side shadow margin on each side of the fixed canvas, so the panel shadow is not clipped.
+    nonisolated static let canvasSideShadowMargin: CGFloat = 32
+    /// Bottom shadow margin of the fixed canvas.
+    nonisolated static let canvasBottomShadowMargin: CGFloat = 44
+
+    /// Fixed, transparent panel frame: big enough for the largest expanded panel plus its shadow,
+    /// so SwiftUI can morph the pill into the panel without the window ever resizing.
+    nonisolated static func canvasRect(anchorMidX: CGFloat, screenFrame: CGRect, maximumPanelSize: CGSize) -> CGRect {
+        let canvasWidth = min(maximumPanelSize.width + (canvasSideShadowMargin * 2), screenFrame.width)
+        let canvasHeight = min(maximumPanelSize.height + canvasBottomShadowMargin, screenFrame.height)
+        let rawOriginX = anchorMidX - (canvasWidth / 2)
+        let originX = min(max(rawOriginX, screenFrame.minX), screenFrame.maxX - canvasWidth)
+        return CGRect(x: originX, y: screenFrame.maxY - canvasHeight, width: canvasWidth, height: canvasHeight)
+    }
+
+    var canvasRect: CGRect {
+        let anchorMidX = hasHardwareNotch ? hardwareNotchRect.midX : screenFrame.midX
+        return Self.canvasRect(
+            anchorMidX: anchorMidX,
+            screenFrame: screenFrame,
+            maximumPanelSize: NotchPanelMetrics.maximumExpandedSize
+        )
+    }
+
+    /// The only part of the canvas that should take mouse events; the rest stays click-through.
+    func interactiveRect(isExpanded: Bool, isActivityPillVisible: Bool, expandedContentSize: CGSize) -> CGRect {
+        if isExpanded {
+            return expandedPanelRect(for: expandedContentSize)
+        }
+        return isActivityPillVisible ? activityPillRect : restingPillRect
+    }
+
     public func expandedPanelRect(for contentSize: CGSize) -> CGRect {
         let horizontalMargin: CGFloat = 12
         let clampedWidth = min(max(contentSize.width, 380), max(320, screenFrame.width - (horizontalMargin * 2)))
@@ -158,8 +192,8 @@ public nonisolated struct NotchScreenGeometry: Equatable, Sendable {
         let maxOriginX = max(minOriginX, screenFrame.maxX - clampedWidth - horizontalMargin)
         let originX = min(max(rawOriginX, minOriginX), maxOriginX)
 
-        let topMargin: CGFloat = hasHardwareNotch ? 0 : 6
-        let originY = screenFrame.maxY - topMargin - clampedHeight
+        // Flush with the top edge on every display, like HeyClicky (the pill grows down from the edge).
+        let originY = screenFrame.maxY - clampedHeight
 
         return CGRect(x: originX, y: originY, width: clampedWidth, height: clampedHeight)
     }
@@ -188,14 +222,29 @@ private final class NotchHostingPanel: NSPanel {
 final class NotchWindowManager: ObservableObject {
     static let shared = NotchWindowManager()
 
-    @Published var activeTab: ClickyNotchTab = .home
+    @Published var activeTab: ClickyNotchTab = .home {
+        didSet {
+            guard activeTab != oldValue else { return }
+            // Width always comes from the tab (never from measurement, which would feed the animated
+            // frame back into itself). Height keeps the last measurement until SwiftUI reports the new tab's.
+            expandedContentSize = CGSize(
+                width: NotchPanelMetrics.size(for: activeTab).width,
+                height: expandedContentSize.height
+            )
+        }
+    }
     @Published private(set) var isExpanded: Bool = false
     @Published private(set) var isHovered: Bool = false
+    /// Which display's pill is hovered, so only that pill grows on hover.
+    @Published private(set) var hoveredDisplayID: CGDirectDisplayID?
     @Published private(set) var activeDisplayID: CGDirectDisplayID?
     @Published private(set) var geometriesByDisplayID: [CGDirectDisplayID: NotchScreenGeometry] = [:]
     @Published private(set) var isActivityPillVisible: Bool = false
     @Published private(set) var pendingAppUpdateVersion: String?
     @Published private(set) var isTextInputFocused: Bool = false
+    @Published private(set) var pendingMorningSuggestions: NotchMorningSuggestionsContent?
+    @Published private(set) var pendingUpcomingMeeting: NotchUpcomingMeetingContent?
+    @Published private(set) var pendingSpotifyTip: Bool = false
 
     var primaryDisplayID: CGDirectDisplayID? {
         if let mainScreen = NSScreen.main {
@@ -206,11 +255,16 @@ final class NotchWindowManager: ObservableObject {
 
     private weak var companionManager: CompanionManager?
     private var panelsByDisplayID: [CGDirectDisplayID: NotchHostingPanel] = [:]
-    private var expandedContentSize: CGSize = CGSize(width: 440, height: 390)
+    /// Measured size of the expanded content. Used for hit-testing and as the morph target; the panel itself never resizes.
+    @Published private(set) var expandedContentSize: CGSize = NotchPanelMetrics.size(for: .home)
+    /// Hover must linger this long before the pill morphs open (short, so it feels like the Dynamic Island).
+    private static let hoverExpandDelayNanoseconds: UInt64 = 90_000_000
     private var appUpdateRestartHandler: (() -> Void)?
 
     private var cancellables = Set<AnyCancellable>()
     private var hoverExpandTask: Task<Void, Never>?
+    /// Set on collapse; cleared once the pointer leaves the pill.
+    private var requiresPointerExitBeforeHoverExpand = false
     private var isStarted = false
 
     nonisolated(unsafe) private var screenObserver: NSObjectProtocol?
@@ -284,6 +338,7 @@ final class NotchWindowManager: ObservableObject {
         geometriesByDisplayID.removeAll()
         isExpanded = false
         isHovered = false
+        hoveredDisplayID = nil
         isTextInputFocused = false
     }
 
@@ -316,7 +371,9 @@ final class NotchWindowManager: ObservableObject {
             }
         }
 
-        updateAllPanelFrames(animated: true)
+        // The panel shrinks back over the pill, so a pointer still resting there must leave
+        // the pill once before hover can reopen it (otherwise Esc reopens it after 90 ms).
+        requiresPointerExitBeforeHoverExpand = true
         refreshMousePassThroughForCurrentCursorLocation()
     }
 
@@ -338,18 +395,33 @@ final class NotchWindowManager: ObservableObject {
 
     public func setHovered(_ hovered: Bool, on displayID: CGDirectDisplayID) {
         isHovered = hovered
+        hoveredDisplayID = hovered ? displayID : nil
 
-        if hovered && !isExpanded {
+        if hovered && !isExpanded && !requiresPointerExitBeforeHoverExpand {
             hoverExpandTask?.cancel()
             hoverExpandTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 180_000_000)
+                try? await Task.sleep(nanoseconds: Self.hoverExpandDelayNanoseconds)
                 guard !Task.isCancelled, let self, self.isHovered, !self.isExpanded else { return }
+                // A pressed button means a click or hold-to-talk is in progress: let the
+                // gesture decide (tap expands, hold talks) instead of opening on hover.
+                guard NSEvent.pressedMouseButtons == 0 else { return }
                 self.expandNotch(tab: self.activeTab, on: displayID)
             }
         } else if !hovered {
+            requiresPointerExitBeforeHoverExpand = false
             hoverExpandTask?.cancel()
             hoverExpandTask = nil
         }
+    }
+
+    func isPillHovered(on displayID: CGDirectDisplayID) -> Bool {
+        isHovered && hoveredDisplayID == displayID
+    }
+
+    /// Called when a press-and-hold starts so hover-expand does not open the notch mid-hold.
+    public func cancelPendingHoverExpand() {
+        hoverExpandTask?.cancel()
+        hoverExpandTask = nil
     }
 
     public func setTextInputFocused(_ focused: Bool) {
@@ -366,8 +438,9 @@ final class NotchWindowManager: ObservableObject {
 
     public func updateExpandedContentSize(_ size: CGSize, for displayID: CGDirectDisplayID) {
         guard isExpanded else { return }
-        let clampedWidth = min(max(size.width, 400), 460)
-        let clampedHeight = min(max(size.height, 240), 640)
+        // Only the height is measured; the width comes from the tab so the animated frame can't feed back.
+        let clampedWidth = NotchPanelMetrics.size(for: activeTab).width
+        let clampedHeight = min(max(size.height, 240), NotchPanelMetrics.maximumExpandedSize.height)
         let newSize = CGSize(width: clampedWidth, height: clampedHeight)
 
         let deltaW = abs(newSize.width - expandedContentSize.width)
@@ -375,9 +448,7 @@ final class NotchWindowManager: ObservableObject {
         guard deltaW > 2 || deltaH > 2 else { return }
 
         expandedContentSize = newSize
-        if activeDisplayID == displayID || activeDisplayID == nil {
-            updatePanelFrame(for: displayID, animated: false)
-        }
+        refreshMousePassThroughForCurrentCursorLocation()
     }
 
     // MARK: - Sparkle / App Update Wiring
@@ -410,6 +481,35 @@ final class NotchWindowManager: ObservableObject {
         appUpdateRestartHandler = nil
     }
 
+    // MARK: - Morning / Meeting / Spotify Cards
+
+    func presentMorningSuggestionsCard(_ content: NotchMorningSuggestionsContent) {
+        pendingMorningSuggestions = content
+        expandNotch(tab: activeTab, on: displayIDContainingCursor() ?? primaryDisplayID)
+    }
+
+    func dismissMorningSuggestionsCard() {
+        pendingMorningSuggestions = nil
+    }
+
+    func presentUpcomingMeetingCard(_ content: NotchUpcomingMeetingContent) {
+        pendingUpcomingMeeting = content
+        expandNotch(tab: activeTab, on: displayIDContainingCursor() ?? primaryDisplayID)
+    }
+
+    func dismissUpcomingMeetingCard() {
+        pendingUpcomingMeeting = nil
+    }
+
+    func presentSpotifyTipCard() {
+        pendingSpotifyTip = true
+        expandNotch(tab: activeTab, on: displayIDContainingCursor() ?? primaryDisplayID)
+    }
+
+    func dismissSpotifyTipCard() {
+        pendingSpotifyTip = false
+    }
+
     public func triggerAppUpdateRestart() {
         let handler = appUpdateRestartHandler
         dismissAppUpdatedCard()
@@ -432,13 +532,11 @@ final class NotchWindowManager: ObservableObject {
         if let activeID = activeDisplayID, let panel = panelsByDisplayID[activeID] {
             panel.allowKeyFocus = true
             panel.ignoresMouseEvents = false
-            updatePanelFrame(for: activeID, animated: true)
             panel.orderFrontRegardless()
         }
 
         for (panelDisplayID, panel) in panelsByDisplayID where panelDisplayID != activeDisplayID {
             panel.allowKeyFocus = false
-            updatePanelFrame(for: panelDisplayID, animated: false)
         }
 
         installExpandedDismissMonitors()
@@ -486,7 +584,7 @@ final class NotchWindowManager: ObservableObject {
                 panelsByDisplayID[displayID] = panel
             }
 
-            let targetFrame = resolvedPanelFrame(for: geometry)
+            let targetFrame = geometry.canvasRect
             panel.setFrame(targetFrame, display: true)
             panel.orderFrontRegardless()
         }
@@ -496,7 +594,7 @@ final class NotchWindowManager: ObservableObject {
         for geometry: NotchScreenGeometry,
         companionManager: CompanionManager
     ) -> NotchHostingPanel {
-        let initialFrame = resolvedPanelFrame(for: geometry)
+        let initialFrame = geometry.canvasRect
         let panel = NotchHostingPanel(
             contentRect: initialFrame,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -512,6 +610,8 @@ final class NotchWindowManager: ObservableObject {
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.isExcludedFromWindowsMenu = true
+        // Lets the cursor buddy's local mouse-moved monitor keep following while the pointer is over the notch.
+        panel.acceptsMouseMovedEvents = true
         panel.isMovableByWindowBackground = false
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
@@ -530,37 +630,6 @@ final class NotchWindowManager: ObservableObject {
 
         panel.contentView = hostingView
         return panel
-    }
-
-    private func resolvedPanelFrame(for geometry: NotchScreenGeometry) -> CGRect {
-        let isThisScreenExpanded = isExpanded && (activeDisplayID == geometry.displayID || (activeDisplayID == nil && geometry.displayID == primaryDisplayID))
-        if isThisScreenExpanded {
-            return geometry.expandedPanelRect(for: expandedContentSize)
-        }
-        return isActivityPillVisible ? geometry.activityPillRect : geometry.restingPillRect
-    }
-
-    private func updateAllPanelFrames(animated: Bool) {
-        for displayID in geometriesByDisplayID.keys {
-            updatePanelFrame(for: displayID, animated: animated)
-        }
-    }
-
-    private func updatePanelFrame(for displayID: CGDirectDisplayID, animated: Bool) {
-        guard let geometry = geometriesByDisplayID[displayID],
-              let panel = panelsByDisplayID[displayID] else {
-            return
-        }
-        let targetFrame = resolvedPanelFrame(for: geometry)
-        if animated {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.22
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().setFrame(targetFrame, display: true)
-            }
-        } else {
-            panel.setFrame(targetFrame, display: true)
-        }
     }
 
     // MARK: - Observers & Auto-Expand Triggers
@@ -582,6 +651,15 @@ final class NotchWindowManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] consent in
                 guard let self, consent != nil else { return }
+                self.expandNotch(tab: self.activeTab, on: self.displayIDContainingCursor() ?? self.primaryDisplayID)
+            }
+            .store(in: &cancellables)
+
+        // 2b. Companion handoff confirmation ("Start a background job?") -> auto-expand notch.
+        companionManager.$pendingHandoffRequest
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] request in
+                guard let self, request != nil else { return }
                 self.expandNotch(tab: self.activeTab, on: self.displayIDContainingCursor() ?? self.primaryDisplayID)
             }
             .store(in: &cancellables)
@@ -633,7 +711,6 @@ final class NotchWindowManager: ObservableObject {
                 guard let self else { return }
                 self.isActivityPillVisible = isActive
                 if !self.isExpanded {
-                    self.updateAllPanelFrames(animated: true)
                     self.refreshMousePassThroughForCurrentCursorLocation()
                 }
             }
@@ -685,17 +762,56 @@ final class NotchWindowManager: ObservableObject {
         removeMouseMoveMonitors()
 
         globalMouseMoveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+            // A Task hop, not MainActor.assumeIsolated: that isolation check crashed inside AppKit's
+            // event-monitor dispatch while Clicky's own window was key.
             Task { @MainActor [weak self] in
-                self?.refreshMousePassThroughForCurrentCursorLocation()
+                self?.refreshMousePassThroughIfPointerIsNearNotch()
             }
         }
 
         localMouseMoveMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
             Task { @MainActor [weak self] in
-                self?.refreshMousePassThroughForCurrentCursorLocation()
+                self?.refreshMousePassThroughIfPointerIsNearNotch()
             }
             return event
         }
+    }
+
+    /// Margin around the pill hit rect inside which mouse moves still trigger a full refresh.
+    private static let notchHotZoneMargin: CGFloat = 24
+
+    /// Whether the previous mouse event was inside the hot zone, so the exit event still runs a refresh.
+    private var wasPointerInsideNotchHotZone = false
+
+    /// Cheap gate in front of the full refresh: mouse moves far from the notch while collapsed do nothing.
+    private func refreshMousePassThroughIfPointerIsNearNotch() {
+        let pointerLocation = NSEvent.mouseLocation
+        let hotZoneRect = geometriesByDisplayID.values
+            .map { (isActivityPillVisible ? $0.activityPillRect : $0.restingPillRect).insetBy(dx: -Self.notchHotZoneMargin, dy: -Self.notchHotZoneMargin) }
+            .first { $0.contains(pointerLocation) } ?? .null
+
+        let shouldRefresh = Self.shouldRefreshNotchPassThrough(
+            pointerLocation: pointerLocation,
+            hotZoneRect: hotZoneRect,
+            wasInsideHotZone: wasPointerInsideNotchHotZone,
+            isPanelExpanded: isExpanded
+        )
+        wasPointerInsideNotchHotZone = hotZoneRect.contains(pointerLocation)
+        guard shouldRefresh else { return }
+        refreshMousePassThroughForCurrentCursorLocation()
+    }
+
+    /// Pure decision: refresh when expanded (panel owns the pointer), when inside the hot zone,
+    /// or when the pointer just left it (so hover state and click-through are reset on exit).
+    nonisolated static func shouldRefreshNotchPassThrough(
+        pointerLocation: CGPoint,
+        hotZoneRect: CGRect,
+        wasInsideHotZone: Bool,
+        isPanelExpanded: Bool
+    ) -> Bool {
+        if isPanelExpanded { return true }
+        if hotZoneRect.contains(pointerLocation) { return true }
+        return wasInsideHotZone
     }
 
     private func removeMouseMoveMonitors() {
@@ -714,22 +830,21 @@ final class NotchWindowManager: ObservableObject {
         var hoveringAnyCollapsedPill = false
 
         for (displayID, panel) in panelsByDisplayID {
-            let isThisScreenExpanded = isExpanded && (activeDisplayID == displayID || (activeDisplayID == nil && displayID == primaryDisplayID))
-            if isThisScreenExpanded {
-                panel.ignoresMouseEvents = false
-                continue
-            }
-
             guard let geometry = geometriesByDisplayID[displayID] else {
                 panel.ignoresMouseEvents = true
                 continue
             }
 
-            let pillRect = isActivityPillVisible ? geometry.activityPillRect : geometry.restingPillRect
-            let hitRect = pillRect.insetBy(dx: -4, dy: -4)
+            // The panel is a big transparent canvas: only the visible pill / expanded panel takes mouse events.
+            let isThisScreenExpanded = isScreenExpanded(displayID)
+            let hitRect = geometry.interactiveRect(
+                isExpanded: isThisScreenExpanded,
+                isActivityPillVisible: isActivityPillVisible,
+                expandedContentSize: expandedContentSize
+            ).insetBy(dx: -4, dy: -4)
             let isInside = hitRect.contains(mouseLocation)
             panel.ignoresMouseEvents = !isInside
-            if isInside {
+            if isInside && !isThisScreenExpanded {
                 hoveringAnyCollapsedPill = true
                 if !isExpanded && !isHovered {
                     setHovered(true, on: displayID)
@@ -737,11 +852,19 @@ final class NotchWindowManager: ObservableObject {
             }
         }
 
+        if !hoveringAnyCollapsedPill && !isExpanded {
+            requiresPointerExitBeforeHoverExpand = false
+        }
         if !hoveringAnyCollapsedPill && isHovered && !isExpanded {
             isHovered = false
+            hoveredDisplayID = nil
             hoverExpandTask?.cancel()
             hoverExpandTask = nil
         }
+    }
+
+    private func isScreenExpanded(_ displayID: CGDirectDisplayID) -> Bool {
+        isExpanded && (activeDisplayID == displayID || (activeDisplayID == nil && displayID == primaryDisplayID))
     }
 
     private func installExpandedDismissMonitors() {
@@ -803,9 +926,10 @@ final class NotchWindowManager: ObservableObject {
         guard isExpanded else { return }
         let clickLocation = NSEvent.mouseLocation
         let targetDisplay = activeDisplayID ?? primaryDisplayID
+        // Inside = the visible expanded panel, not the (much larger) transparent canvas window.
         if let targetDisplay,
-           let panel = panelsByDisplayID[targetDisplay],
-           panel.frame.insetBy(dx: -4, dy: -4).contains(clickLocation) {
+           let geometry = geometriesByDisplayID[targetDisplay],
+           geometry.expandedPanelRect(for: expandedContentSize).insetBy(dx: -4, dy: -4).contains(clickLocation) {
             return
         }
         collapseNotch()

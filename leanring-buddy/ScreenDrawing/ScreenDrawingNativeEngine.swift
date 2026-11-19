@@ -209,7 +209,24 @@ public enum ClickyDrawFontRegistry {
         return patrickHandFontName
     }
 
+    private nonisolated static let ctFontCacheLock = NSLock()
+    private nonisolated(unsafe) static var ctFontCache: [String: CTFont] = [:]
+
+    /// Fonts are cached per family|size|weight; text layers ask for the same font every redraw.
     public nonisolated static func ctFont(family: String, size: CGFloat, weight: Int) -> CTFont {
+        let cacheKey = "\(family)|\(size)|\(weight)"
+        ctFontCacheLock.lock()
+        let cachedFont = ctFontCache[cacheKey]
+        ctFontCacheLock.unlock()
+        if let cachedFont { return cachedFont }
+        let font = makeCTFont(family: family, size: size, weight: weight)
+        ctFontCacheLock.lock()
+        ctFontCache[cacheKey] = font
+        ctFontCacheLock.unlock()
+        return font
+    }
+
+    private nonisolated static func makeCTFont(family: String, size: CGFloat, weight: Int) -> CTFont {
         let lower = family.lowercased()
         let clampedSize = max(4, size)
 
@@ -668,6 +685,16 @@ public final class ScreenDrawingNativeEngine: ObservableObject {
     /// Whether 3D figures float without a paper card (Stream mode).
     public var figuresFloat: Bool = true
 
+    /// True while the drawing clock is frozen (Space in the replay window / white board).
+    @Published public private(set) var isPaused: Bool = false
+    private var pausedAtMediaTime: CFTimeInterval = 0
+    private var totalPausedSeconds: CFTimeInterval = 0
+
+    /// The clock the JS engine sees: media time minus every pause so far, frozen while paused.
+    fileprivate var drawingClockSeconds: CFTimeInterval {
+        (isPaused ? pausedAtMediaTime : CACurrentMediaTime()) - totalPausedSeconds
+    }
+
     private let virtualMachine = JSVirtualMachine()
     private var context: JSContext?
     private var isLoaded = false
@@ -721,6 +748,8 @@ public final class ScreenDrawingNativeEngine: ObservableObject {
             "code": code,
             "done": done
         ]])
+        // The drain loop invalidates itself when drained empty; new queued work restarts it.
+        if drainTimer == nil { startDrainLoop() }
         drainRenderNow()
 
         if let jsonString = result?.toString(),
@@ -739,6 +768,11 @@ public final class ScreenDrawingNativeEngine: ObservableObject {
         var opts: [String: Any] = [:]
         if let subtitles { opts["subtitles"] = subtitles }
         let res = canvas.invokeMethod("continueStream", withArguments: [opts])
+        // The drain loop stops once a drawing finishes; the new turn needs it running again to animate.
+        isStreaming = true
+        isFinished = false
+        latestAnalysis = nil
+        startDrainLoop()
         drainRenderNow()
         guard let json = res?.toString(),
               let data = json.data(using: .utf8),
@@ -767,7 +801,21 @@ public final class ScreenDrawingNativeEngine: ObservableObject {
         updateFinishedFlag()
     }
 
+    /// Freezes or resumes the drawing's own clock; animations and timed lines hold still while paused.
+    public func setPaused(_ shouldPause: Bool) {
+        guard shouldPause != isPaused else { return }
+        if shouldPause {
+            pausedAtMediaTime = CACurrentMediaTime()
+            isPaused = true
+        } else {
+            totalPausedSeconds += CACurrentMediaTime() - pausedAtMediaTime
+            isPaused = false
+        }
+    }
+
     public func clear() {
+        // A new drawing always starts running, never inherits a pause.
+        setPaused(false)
         invalidateAllTimers()
         stopDrainLoop()
         canvasObject?.invokeMethod("clear", withArguments: [])
@@ -981,6 +1029,7 @@ public final class ScreenDrawingNativeEngine: ObservableObject {
               let nativeSource = Self.loadBundleScript(named: "clicky-draw-native"),
               let piecesSource = Self.loadBundleScript(named: "clicky-draw-pieces") else {
             latestError = "Missing bundled drawing JS scripts (clicky-draw-engine/native/pieces.js)"
+            print("🎨 Drawing: \(latestError ?? "missing bundled drawing scripts")")
             return
         }
 
@@ -998,8 +1047,10 @@ public final class ScreenDrawingNativeEngine: ObservableObject {
     private func installHostBridge(in ctx: JSContext) {
         guard let host = JSValue(newObjectIn: ctx) else { return }
 
-        let nowBlock: @convention(block) () -> Double = {
-            CACurrentMediaTime()
+        let nowBlock: @convention(block) () -> Double = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.drawingClockSeconds ?? CACurrentMediaTime()
+            }
         }
         host.setObject(nowBlock, forKeyedSubscript: "now" as NSString)
 
@@ -1147,7 +1198,8 @@ public final class ScreenDrawingNativeEngine: ObservableObject {
     private func startDrainLoop() {
         drainTimer?.invalidate()
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            // The timer is added to the main run loop, so this runs on the main thread.
+            MainActor.assumeIsolated {
                 self?.drainRenderNow()
             }
         }

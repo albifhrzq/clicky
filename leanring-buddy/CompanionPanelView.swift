@@ -22,10 +22,9 @@ struct CompanionPanelView: View {
     @ObservedObject private var panelStylePreference = ClickyPanelStylePreference.shared
     @ObservedObject private var shortcutMonitor: GlobalPushToTalkShortcutMonitor
 
-    @State private var emailInput: String = ""
     @State private var quickPromptInput: String = ""
     @State private var showingSettingsSheet: Bool = false
-    @State private var settingsInitialSection: HomeSpaceSettingsSection = .connection
+    @State private var settingsInitialSection: HomeSpaceSettingsSection = .general
 
     init(companionManager: CompanionManager) {
         self.companionManager = companionManager
@@ -336,25 +335,26 @@ struct CompanionPanelView: View {
 
     // MARK: - Permissions Copy
 
+    /// "Hold X and just start talking, or press Y to type instead." Falls back to the short hint
+    /// when the text-mode shortcut is disabled or has no keys.
+    private func talkHintText(shortcutLabel: String) -> String {
+        let textBinding = shortcutMonitor.binding(for: .textTrigger)
+        guard textBinding.isEnabled, !textBinding.displayText.isEmpty else {
+            return String(localized: "Hold \(shortcutLabel) to talk.")
+        }
+        let textModeHint = String(localized: "press \(textBinding.displayText) to type instead")
+        return String(localized: "Hold \(shortcutLabel) and just start talking, or \(textModeHint).")
+    }
+
     @ViewBuilder
     private var permissionsCopySection: some View {
         if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
             let voiceBinding = shortcutMonitor.binding(for: .voiceHold)
             let shortcutLabel = voiceBinding.displayText.isEmpty ? "Control+Option" : voiceBinding.displayText
-            Text("Hold \(shortcutLabel) to talk.")
+            Text(talkHintText(shortcutLabel: shortcutLabel))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(DS.Colors.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        } else if companionManager.allPermissionsGranted && !companionManager.hasSubmittedEmail {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Drop your email to get started.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(DS.Colors.textSecondary)
-                Text("If I keep building this, I'll keep you in the loop.")
-                    .font(.system(size: 11))
-                    .foregroundColor(DS.Colors.textTertiary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
         } else if companionManager.allPermissionsGranted {
             Text("You're all set. Hit Start to meet Clicky.")
                 .font(.system(size: 12, weight: .medium))
@@ -392,64 +392,26 @@ struct CompanionPanelView: View {
         }
     }
 
-    // MARK: - Email + Start Button
+    // MARK: - Start Button
 
     @ViewBuilder
     private var startButton: some View {
         if !companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
-            if !companionManager.hasSubmittedEmail {
-                VStack(spacing: 8) {
-                    TextField("Enter your email", text: $emailInput)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13))
-                        .foregroundColor(DS.Colors.textPrimary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
-                                .fill(Color.white.opacity(0.08))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DS.CornerRadius.medium, style: .continuous)
-                                .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
-                        )
-
-                    Button {
-                        companionManager.submitEmail(emailInput)
-                    } label: {
-                        Text("Submit")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(DS.Colors.textOnAccent)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: DS.CornerRadius.large, style: .continuous)
-                                    .fill(emailInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                          ? DS.Colors.accent.opacity(0.4)
-                                          : DS.Colors.accent)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .pointerCursor()
-                    .disabled(emailInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            } else {
-                Button {
-                    companionManager.triggerOnboarding()
-                } label: {
-                    Text("Start")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(DS.Colors.textOnAccent)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: DS.CornerRadius.large, style: .continuous)
-                                .fill(DS.Colors.accent)
-                        )
-                }
-                .buttonStyle(.plain)
-                .pointerCursor()
+            Button {
+                companionManager.triggerOnboarding()
+            } label: {
+                Text("Start")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(DS.Colors.textOnAccent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: DS.CornerRadius.large, style: .continuous)
+                            .fill(DS.Colors.accent)
+                    )
             }
+            .buttonStyle(.plain)
+            .pointerCursor()
         }
     }
 
@@ -470,6 +432,13 @@ struct CompanionPanelView: View {
             if companionManager.hasScreenRecordingPermission {
                 screenContentPermissionRow
             }
+
+            ClickyPermissionGuideView(
+                hasAccessibility: companionManager.hasAccessibilityPermission,
+                hasScreenRecording: companionManager.hasScreenRecordingPermission,
+                hasScreenContent: companionManager.hasScreenContentPermission || !companionManager.hasScreenRecordingPermission,
+                requestScreenContent: { companionManager.requestScreenContentPermission() }
+            )
         }
     }
 
@@ -779,7 +748,7 @@ struct CompanionPanelView: View {
 
     private var dmFarzaButton: some View {
         Button {
-            if let url = URL(string: "https://x.com/farzatv") {
+            if let url = URL(string: MenuBarPanelManager.feedbackURLString) {
                 NSWorkspace.shared.open(url)
             }
         } label: {
@@ -839,7 +808,7 @@ struct CompanionPanelView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "play.circle")
                             .font(.system(size: 11, weight: .medium))
-                        Text("Watch Onboarding Again")
+                        Text("Replay Tour")
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundColor(DS.Colors.textTertiary)

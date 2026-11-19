@@ -9,24 +9,10 @@
 /* Begin PBXBuildFile section */
 		AA00BB032F6500030039DA55 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AA00BB022F6500020039DA55 /* Sparkle */; };
 		AA00BB062F6500060039DA55 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = AA00BB052F6500050039DA55 /* PostHog */; };
-		AA00BB142F6500140039DA55 /* ClickyBrowserHost in Copy Helpers */ = {isa = PBXBuildFile; fileRef = AA00BB112F6500110039DA55 /* ClickyBrowserHost */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		AA00BB152F6500150039DA55 /* ClickyBundledSkills in Resources */ = {isa = PBXBuildFile; fileRef = AA00BB122F6500120039DA55 /* ClickyBundledSkills */; };
-		AA00BB162F6500160039DA55 /* ClickyIntegrationSkills in Resources */ = {isa = PBXBuildFile; fileRef = AA00BB132F6500130039DA55 /* ClickyIntegrationSkills */; };
+		AA00BB142F6500140039DA55 /* leanring-buddy/Helpers/ClickyBrowserHost in Copy Helpers */ = {isa = PBXBuildFile; fileRef = AA00BB112F6500110039DA55 /* leanring-buddy/Helpers/ClickyBrowserHost */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		AA00BB152F6500150039DA55 /* leanring-buddy/Resources/ClickyBundledSkills in Resources */ = {isa = PBXBuildFile; fileRef = AA00BB122F6500120039DA55 /* leanring-buddy/Resources/ClickyBundledSkills */; };
+		AA00BB162F6500160039DA55 /* leanring-buddy/Resources/ClickyIntegrationSkills in Resources */ = {isa = PBXBuildFile; fileRef = AA00BB132F6500130039DA55 /* leanring-buddy/Resources/ClickyIntegrationSkills */; };
 /* End PBXBuildFile section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		AA00BB172F6500170039DA55 /* Copy Helpers */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = Contents/Helpers;
-			dstSubfolderSpec = 1;
-			files = (
-				AA00BB142F6500140039DA55 /* ClickyBrowserHost in Copy Helpers */,
-			);
-			name = "Copy Helpers";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXContainerItemProxy section */
 		28F22CCD2F56440300A0FC59 /* PBXContainerItemProxy */ = {
@@ -45,13 +31,27 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		AA00BB172F6500170039DA55 /* Copy Helpers */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Helpers;
+			dstSubfolderSpec = 1;
+			files = (
+				AA00BB142F6500140039DA55 /* leanring-buddy/Helpers/ClickyBrowserHost in Copy Helpers */,
+			);
+			name = "Copy Helpers";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		28F22CBF2F56440300A0FC59 /* Clicky.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clicky.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		28F22CCC2F56440300A0FC59 /* leanring-buddyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "leanring-buddyTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		28F22CD62F56440300A0FC59 /* leanring-buddyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "leanring-buddyUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		AA00BB112F6500110039DA55 /* ClickyBrowserHost */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = "leanring-buddy/Helpers/ClickyBrowserHost"; sourceTree = "<group>"; };
-		AA00BB122F6500120039DA55 /* ClickyBundledSkills */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "leanring-buddy/Resources/ClickyBundledSkills"; sourceTree = "<group>"; };
-		AA00BB132F6500130039DA55 /* ClickyIntegrationSkills */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "leanring-buddy/Resources/ClickyIntegrationSkills"; sourceTree = "<group>"; };
+		AA00BB112F6500110039DA55 /* leanring-buddy/Helpers/ClickyBrowserHost */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = "leanring-buddy/Helpers/ClickyBrowserHost"; sourceTree = "<group>"; };
+		AA00BB122F6500120039DA55 /* leanring-buddy/Resources/ClickyBundledSkills */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "leanring-buddy/Resources/ClickyBundledSkills"; sourceTree = "<group>"; };
+		AA00BB132F6500130039DA55 /* leanring-buddy/Resources/ClickyIntegrationSkills */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "leanring-buddy/Resources/ClickyIntegrationSkills"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -62,20 +62,20 @@
 				Helpers/ClickyBrowserHost,
 				Info.plist,
 				Resources/AGENTS.md,
-				Resources/ClickyBundledSkills/clicky-browser/SKILL.md,
-				Resources/ClickyBundledSkills/clicky-browser/references/batching.md,
-				Resources/ClickyBundledSkills/clicky-browser/references/confirmations.md,
-				Resources/ClickyBundledSkills/clicky-browser/references/files.md,
-				Resources/ClickyBundledSkills/clicky-browser/references/safety.md,
-				Resources/ClickyBundledSkills/clicky-browser/references/tabs.md,
-				Resources/ClickyBundledSkills/clicky-browser/references/troubleshooting.md,
-				Resources/ClickyBundledSkills/vercel-deploy/ATTRIBUTION.md,
-				Resources/ClickyBundledSkills/vercel-deploy/LICENSE.txt,
-				Resources/ClickyBundledSkills/vercel-deploy/SKILL.md,
-				Resources/ClickyBundledSkills/vercel-deploy/agents/openai.yaml,
-				Resources/ClickyBundledSkills/vercel-deploy/assets/vercel-small.svg,
-				Resources/ClickyBundledSkills/vercel-deploy/assets/vercel.png,
-				Resources/ClickyBundledSkills/vercel-deploy/scripts/deploy.sh,
+				"Resources/ClickyBundledSkills/clicky-browser/references/batching.md",
+				"Resources/ClickyBundledSkills/clicky-browser/references/confirmations.md",
+				"Resources/ClickyBundledSkills/clicky-browser/references/files.md",
+				"Resources/ClickyBundledSkills/clicky-browser/references/safety.md",
+				"Resources/ClickyBundledSkills/clicky-browser/references/tabs.md",
+				"Resources/ClickyBundledSkills/clicky-browser/references/troubleshooting.md",
+				"Resources/ClickyBundledSkills/clicky-browser/SKILL.md",
+				"Resources/ClickyBundledSkills/vercel-deploy/agents/openai.yaml",
+				"Resources/ClickyBundledSkills/vercel-deploy/assets/vercel-small.svg",
+				"Resources/ClickyBundledSkills/vercel-deploy/assets/vercel.png",
+				"Resources/ClickyBundledSkills/vercel-deploy/ATTRIBUTION.md",
+				"Resources/ClickyBundledSkills/vercel-deploy/LICENSE.txt",
+				"Resources/ClickyBundledSkills/vercel-deploy/scripts/deploy.sh",
+				"Resources/ClickyBundledSkills/vercel-deploy/SKILL.md",
 				Resources/ClickyIntegrationSkills/clickup/SKILL.md,
 				Resources/ClickyIntegrationSkills/dropbox/SKILL.md,
 				Resources/ClickyIntegrationSkills/gmail/SKILL.md,
@@ -147,6 +147,7 @@
 				28F22CCF2F56440300A0FC59 /* leanring-buddyTests */,
 				28F22CD92F56440300A0FC59 /* leanring-buddyUITests */,
 				28F22CC02F56440300A0FC59 /* Products */,
+				A319797C30A7C2B1007FBD88 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -158,6 +159,16 @@
 				28F22CD62F56440300A0FC59 /* leanring-buddyUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A319797C30A7C2B1007FBD88 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				AA00BB122F6500120039DA55 /* leanring-buddy/Resources/ClickyBundledSkills */,
+				AA00BB132F6500130039DA55 /* leanring-buddy/Resources/ClickyIntegrationSkills */,
+				AA00BB112F6500110039DA55 /* leanring-buddy/Helpers/ClickyBrowserHost */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -242,7 +253,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 2620;
+				LastUpgradeCheck = 2720;
 				TargetAttributes = {
 					28F22CBE2F56440300A0FC59 = {
 						CreatedOnToolsVersion = 26.2;
@@ -263,6 +274,7 @@
 			knownRegions = (
 				en,
 				Base,
+				id,
 			);
 			mainGroup = 28F22CB62F56440300A0FC59;
 			minimizedProjectReferenceProxies = 1;
@@ -287,8 +299,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA00BB152F6500150039DA55 /* ClickyBundledSkills in Resources */,
-				AA00BB162F6500160039DA55 /* ClickyIntegrationSkills in Resources */,
+				AA00BB152F6500150039DA55 /* leanring-buddy/Resources/ClickyBundledSkills in Resources */,
+				AA00BB162F6500160039DA55 /* leanring-buddy/Resources/ClickyIntegrationSkills in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -380,6 +392,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 6D7X9GGZAW;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -405,6 +418,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -444,6 +458,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 6D7X9GGZAW;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -462,6 +477,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -474,8 +490,9 @@
 				CODE_SIGN_ENTITLEMENTS = "leanring-buddy/leanring-buddy.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 71;
-				DEVELOPMENT_TEAM = 6D7X9GGZAW;
+				CURRENT_PROJECT_VERSION = 73;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = U6ZBJ9KWB9;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -491,7 +508,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.yourcompany.leanring-buddy";
 				PRODUCT_NAME = Clicky;
 				REGISTER_APP_GROUPS = YES;
@@ -512,8 +529,9 @@
 				CODE_SIGN_ENTITLEMENTS = "leanring-buddy/leanring-buddy.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 71;
-				DEVELOPMENT_TEAM = 6D7X9GGZAW;
+				CURRENT_PROJECT_VERSION = 73;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = U6ZBJ9KWB9;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -529,7 +547,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.yourcompany.leanring-buddy";
 				PRODUCT_NAME = Clicky;
 				REGISTER_APP_GROUPS = YES;
@@ -548,7 +566,8 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6D7X9GGZAW;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = U6ZBJ9KWB9;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.2;
 				MARKETING_VERSION = 1.0;
@@ -559,7 +578,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/leanring-buddy.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/leanring-buddy";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Clicky.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Clicky";
 			};
 			name = Debug;
 		};
@@ -569,7 +588,8 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6D7X9GGZAW;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = U6ZBJ9KWB9;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.2;
 				MARKETING_VERSION = 1.0;
@@ -580,7 +600,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/leanring-buddy.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/leanring-buddy";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Clicky.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Clicky";
 			};
 			name = Release;
 		};
@@ -589,7 +609,8 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6D7X9GGZAW;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = U6ZBJ9KWB9;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.yourcompany.leanring-buddyUITests";
@@ -608,7 +629,8 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6D7X9GGZAW;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = U6ZBJ9KWB9;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.yourcompany.leanring-buddyUITests";

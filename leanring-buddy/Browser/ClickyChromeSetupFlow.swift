@@ -107,7 +107,7 @@ public final class ClickyChromeSetupFlow: ObservableObject {
 
         if let firstError = bridge.nativeHostSetupErrors.first {
             setupState = .failed(
-                message: "HeyClicky couldn't set up the browser connection: \(firstError.underlyingDescription)"
+                message: String(localized: "Clicky couldn't set up the browser connection: \(firstError.underlyingDescription)")
             )
             return
         }
@@ -257,21 +257,48 @@ public final class ClickyChromeSetupFlow: ObservableObject {
         return false
     }
 
+    /// Guided step for the old unpacked path. Toggling Developer mode for the user is not
+    /// safe (it means editing the browser's own preferences), so we only tell them where it is.
+    public static var developerModeStepInstruction: String {
+        String(localized: "Turn on Developer mode (top right of chrome://extensions).")
+    }
+
     /// Generates concise guided instructions for swapping out the old preview copy
     /// or adding the extension from the Chrome Web Store.
     public func swapOrInstallInstructions(for browserName: String? = nil) -> String {
         let targetName = browserName ?? preferredBrowserName
         if hasOldCopyToRemove {
-            return """
-            1. Open \(targetName) extensions and find the old HeyClicky preview copy (turned off, unpacked, or showing an error — ID starts with \(Self.oldPreviewExtensionIDPrefix)).
-            2. Click Remove on that old card and confirm Remove.
-            3. Add the HeyClicky extension from the Chrome Web Store (\(Self.chromeWebStoreURL.absoluteString)).
-            """
+            return [
+                String(localized: "Open \(targetName) extensions and find the old Clicky preview copy (turned off, unpacked, or showing an error)."),
+                Self.developerModeStepInstruction,
+                String(localized: "Click Remove on that old card and confirm Remove."),
+                String(localized: "Add the Clicky extension from the Chrome Web Store: \(Self.chromeWebStoreURL.absoluteString)")
+            ].enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         }
-        return """
-        1. Open HeyClicky on the Chrome Web Store (\(Self.chromeWebStoreURL.absoluteString)) in \(targetName).
-        2. Click "Add to \(targetName)" (or "Add to Chrome"), then confirm "Add extension".
-        """
+        return String(localized: "Finish in \(targetName): add Clicky from the Chrome Web Store. It connects by itself.")
+    }
+
+    // MARK: - Extension Update Prompt
+
+    /// "Swap" means replacing an old, manually installed (unpacked) copy with the Web Store
+    /// extension, which updates itself. The Web Store build numbers (e.g. 0.6.x) are not the
+    /// app's version, so the prompt depends only on an old copy being present.
+    /// Pure rule: prompt only when an old copy exists AND no agent job is using the browser.
+    nonisolated public static func shouldPromptExtensionSwap(hasOldCopy: Bool, isAnyJobRunning: Bool) -> Bool {
+        hasOldCopy && !isAnyJobRunning
+    }
+
+    /// Whether the "There's a new version of the extension" prompt should show right now.
+    public var shouldShowNewExtensionPrompt: Bool {
+        Self.shouldPromptExtensionSwap(
+            hasOldCopy: hasOldCopyToRemove,
+            isAnyJobRunning: !AgentHarnessRunnerRuntime.shared.activeJobIDs.isEmpty
+        )
+    }
+
+    /// True while a job is running and a swap is pending, so the UI can say it will wait.
+    public var isNewExtensionPromptWaitingForIdle: Bool {
+        hasOldCopyToRemove && !AgentHarnessRunnerRuntime.shared.activeJobIDs.isEmpty
     }
 
     // MARK: - Private Helpers

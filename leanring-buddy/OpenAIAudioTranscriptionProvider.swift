@@ -134,7 +134,7 @@ private nonisolated final class OpenAIAudioTranscriptionSession: BuddyStreamingT
         self.urlSession = URLSession(configuration: urlSessionConfiguration)
     }
 
-    func appendAudioBuffer(_ audioBuffer: AVAudioPCMBuffer) {
+    nonisolated func appendAudioBuffer(_ audioBuffer: AVAudioPCMBuffer) {
         guard let audioPCM16Data = audioPCM16Converter.convertToPCM16Data(from: audioBuffer),
               !audioPCM16Data.isEmpty else {
             return

@@ -51,6 +51,8 @@ struct HomeSpaceView: View {
                 homeHeader
                 quickTaskLauncherCard
                 jobsSection
+                HomeSuggestionsSection(companionManager: companionManager)
+                HomeDrawingsSection()
                 clickyRosterSection
                 routinesSummarySection
                 liveNotePreviewSection

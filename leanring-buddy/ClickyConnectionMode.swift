@@ -3,6 +3,7 @@
 //  leanring-buddy
 //
 
+import AppKit
 import Combine
 import Foundation
 
@@ -58,6 +59,8 @@ public final class ClickyConfiguration: ObservableObject {
     private let selectedAgentModelKey = "clicky_selected_agent_model"
     private let workerBaseURLKey = "clicky_worker_base_url"
     private let soundEffectsEnabledKey = "clicky_sound_effects_enabled"
+    private let stayQuietDuringCallsKey = "clicky_stay_quiet_during_calls"
+    private let askBeforeStartingJobsKey = "clicky_ask_before_starting_jobs"
 
     // Keychain Keys
     private let anthropicKeyKey = "clicky_anthropic_api_key"
@@ -78,7 +81,14 @@ public final class ClickyConfiguration: ObservableObject {
     private let voiceWakePhraseKey = "clicky_voice_wake_phrase"
     private let dictationLanguageCodeKey = "clicky_dictation_language_code"
     private let dictationAutoDetectKey = "clicky_dictation_auto_detect"
+    private let appLanguageKey = "clicky_app_language"
     private let hideFloatingCursorKey = "clicky_hide_floating_cursor"
+    private let suggestAgentTasksKey = "clicky_suggest_agent_tasks"
+    // Same keys as HeyClicky 1.1.5 so the two Agents → Announcements toggles mean the same thing.
+    private let speakWhenJobStartsOrFinishesKey = "ClickyAgentVoiceAnnouncementsEnabled"
+    private let showJobUpdatesBesideCursorKey = "ClickyAgentCursorTextAnnouncementsEnabled"
+    private let readsAnswersAloudKey = "clicky_reads_answers_aloud"
+    private let showUpcomingMeetingsKey = "clicky_show_upcoming_meetings"
     private let cursorColorNameKey = "clicky_cursor_color_name"
     private let alwaysApproveFileUploadsKey = "clicky_always_approve_file_uploads"
 
@@ -118,6 +128,16 @@ public final class ClickyConfiguration: ObservableObject {
 
     @Published public var soundEffectsEnabled: Bool {
         didSet { defaults.set(soundEffectsEnabled, forKey: soundEffectsEnabledKey) }
+    }
+
+    /// When true, unprompted audio (agent chimes, proactive speech) is skipped while another app is using the mic (a call).
+    @Published public var stayQuietDuringCalls: Bool {
+        didSet { defaults.set(stayQuietDuringCalls, forKey: stayQuietDuringCallsKey) }
+    }
+
+    /// When on, a job the companion offers waits for "Start job" on a notch card; when off it starts right away.
+    @Published public var askBeforeStartingJobs: Bool {
+        didSet { defaults.set(askBeforeStartingJobs, forKey: askBeforeStartingJobsKey) }
     }
 
     // Direct Keys
@@ -185,8 +205,28 @@ public final class ClickyConfiguration: ObservableObject {
         didSet { defaults.set(dictationAutoDetect, forKey: dictationAutoDetectKey) }
     }
 
+    /// "system", "en" or "id". Takes effect after relaunch because AppleLanguages is read at launch.
+    @Published public var appLanguage: String {
+        didSet {
+            defaults.set(appLanguage, forKey: appLanguageKey)
+            if let appleLanguagesValue = ClickyAppLanguage.appleLanguagesValue(for: appLanguage) {
+                defaults.set(appleLanguagesValue, forKey: "AppleLanguages")
+            } else {
+                defaults.removeObject(forKey: "AppleLanguages")
+            }
+        }
+    }
+
     @Published public var hideFloatingCursor: Bool {
         didSet { defaults.set(hideFloatingCursor, forKey: hideFloatingCursorKey) }
+    }
+
+    @Published public var suggestAgentTasks: Bool {
+        didSet { defaults.set(suggestAgentTasks, forKey: suggestAgentTasksKey) }
+    }
+
+    @Published public var showUpcomingMeetings: Bool {
+        didSet { defaults.set(showUpcomingMeetings, forKey: showUpcomingMeetingsKey) }
     }
 
     @Published public var cursorColorName: String {
@@ -195,6 +235,21 @@ public final class ClickyConfiguration: ObservableObject {
 
     @Published public var alwaysApproveFileUploads: Bool {
         didSet { defaults.set(alwaysApproveFileUploads, forKey: alwaysApproveFileUploadsKey) }
+    }
+
+    /// Speaks a short line when a background job starts, finishes, or needs the user.
+    @Published public var speakWhenJobStartsOrFinishes: Bool {
+        didSet { defaults.set(speakWhenJobStartsOrFinishes, forKey: speakWhenJobStartsOrFinishesKey) }
+    }
+
+    /// Shows a finished job's summary in the bubble next to the cursor.
+    @Published public var showJobUpdatesBesideCursor: Bool {
+        didSet { defaults.set(showJobUpdatesBesideCursor, forKey: showJobUpdatesBesideCursorKey) }
+    }
+
+    /// Composer speaker toggle: also speak typed-chat answers out loud.
+    @Published public var readsAnswersAloud: Bool {
+        didSet { defaults.set(readsAnswersAloud, forKey: readsAnswersAloudKey) }
     }
 
     /// True when running in any local/direct mode or pointing at a local Worker URL,
@@ -223,6 +278,8 @@ public final class ClickyConfiguration: ObservableObject {
             ?? "https://api.heyclicky.com"
         self.workerBaseURL = defaults.string(forKey: workerBaseURLKey) ?? defaultWorkerURL
         self.soundEffectsEnabled = defaults.object(forKey: soundEffectsEnabledKey) as? Bool ?? true
+        self.stayQuietDuringCalls = defaults.object(forKey: stayQuietDuringCallsKey) as? Bool ?? true
+        self.askBeforeStartingJobs = defaults.object(forKey: askBeforeStartingJobsKey) as? Bool ?? true
 
         self.anthropicAPIKey = ClickyKeychainStore.read(key: anthropicKeyKey) ?? ""
         self.openaiAPIKey = ClickyKeychainStore.read(key: openaiKeyKey) ?? ""
@@ -250,7 +307,13 @@ public final class ClickyConfiguration: ObservableObject {
         self.voiceWakePhrase = (savedWakePhrase?.isEmpty == false) ? savedWakePhrase! : "hey clicky"
         self.dictationLanguageCode = defaults.string(forKey: dictationLanguageCodeKey) ?? "auto"
         self.dictationAutoDetect = defaults.object(forKey: dictationAutoDetectKey) as? Bool ?? true
+        self.appLanguage = defaults.string(forKey: appLanguageKey) ?? "system"
         self.hideFloatingCursor = defaults.object(forKey: hideFloatingCursorKey) as? Bool ?? false
+        self.suggestAgentTasks = defaults.object(forKey: suggestAgentTasksKey) as? Bool ?? true
+        self.speakWhenJobStartsOrFinishes = defaults.object(forKey: speakWhenJobStartsOrFinishesKey) as? Bool ?? true
+        self.showJobUpdatesBesideCursor = defaults.object(forKey: showJobUpdatesBesideCursorKey) as? Bool ?? true
+        self.readsAnswersAloud = defaults.object(forKey: readsAnswersAloudKey) as? Bool ?? false
+        self.showUpcomingMeetings = defaults.object(forKey: showUpcomingMeetingsKey) as? Bool ?? false
         self.cursorColorName = defaults.string(forKey: cursorColorNameKey) ?? "blue"
         self.alwaysApproveFileUploads = defaults.object(forKey: alwaysApproveFileUploadsKey) as? Bool ?? false
     }
@@ -260,5 +323,38 @@ public final class ClickyConfiguration: ObservableObject {
         openCodexRefreshTask = Task { @MainActor in
             await OpenCodexService.shared.refresh()
         }
+    }
+}
+
+
+/// Maps the app language preference to the `AppleLanguages` override.
+enum ClickyAppLanguage {
+    /// Returns nil for "system" (and unknown values) so the override key is removed.
+    nonisolated static func appleLanguagesValue(for preference: String) -> [String]? {
+        switch preference {
+        case "en": return ["en"]
+        case "id": return ["id"]
+        default: return nil
+        }
+    }
+
+    /// Spawns a detached shell that waits for this process to exit, then opens a new
+    /// instance (so two copies never overlap), and terminates the current app.
+    /// If the helper cannot be spawned the app keeps running and the error is shown.
+    @MainActor static func relaunchApp() {
+        let relaunchProcess = Process()
+        relaunchProcess.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // The bundle path is passed as $0 rather than interpolated into the script.
+        relaunchProcess.arguments = ["-c", "sleep 1; /usr/bin/open -n \"$0\"", Bundle.main.bundlePath]
+        do {
+            try relaunchProcess.run()
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Could not relaunch Clicky"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+            return
+        }
+        NSApp.terminate(nil)
     }
 }

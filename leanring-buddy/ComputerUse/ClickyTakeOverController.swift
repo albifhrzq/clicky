@@ -80,7 +80,7 @@ nonisolated public enum ClickyTakeOverError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .busy:
-            return "HeyClicky was already driving the screen, so nothing was done for this step."
+            return "Clicky was already driving the screen, so nothing was done for this step."
         case .declined:
             return "The user said not now to this step."
         case .userTookOver:
@@ -282,7 +282,7 @@ public final class ClickyTakeOverController: ObservableObject {
         atomicSignal.reset(initialMouseLocation: driver.currentCursorPosition())
 
         phase = .driving
-        overlayStatus = "Getting started"
+        overlayStatus = String(localized: "Hands off the mouse while I drive. Esc stops me.")
         endSummary = nil
         onPhaseChanged?(.driving)
 
@@ -301,7 +301,7 @@ public final class ClickyTakeOverController: ObservableObject {
             // and return a structured outcome rather than crashing.
             let outcome = AgentDriveOutcome(
                 ending: .failed,
-                summary: "No screen-driving step executor is configured yet.",
+                summary: String(localized: "I can't see the screen right now."),
                 actions: 0
             )
             endSummary = outcome.summary
@@ -330,7 +330,7 @@ public final class ClickyTakeOverController: ObservableObject {
             let ending: AgentDriveOutcome.Ending = (userTookOver || atomicSignal.isTookOver()) ? .userTookOver : .failed
             let summary = ending == .userTookOver
                 ? "The user took the screen back partway through, so this step may not be finished."
-                : "Screen control stopped."
+                : String(localized: "I stopped there: \(String(localized: "screen control ended")). It's yours.")
             let outcome = AgentDriveOutcome(ending: ending, summary: summary, actions: 0)
             endSummary = summary
             return outcome
@@ -343,9 +343,13 @@ public final class ClickyTakeOverController: ObservableObject {
             endSummary = outcome.summary
             return outcome
         } catch {
+            let lostConnectionCodes: [URLError.Code] = [.networkConnectionLost, .notConnectedToInternet]
+            let isConnectionLost = (error as? URLError).map { lostConnectionCodes.contains($0.code) } ?? false
             let outcome = AgentDriveOutcome(
                 ending: .failed,
-                summary: error.localizedDescription,
+                summary: isConnectionLost
+                    ? String(localized: "I lost the connection partway, so I stopped there.")
+                    : error.localizedDescription,
                 actions: 0
             )
             endSummary = outcome.summary
@@ -365,7 +369,7 @@ public final class ClickyTakeOverController: ObservableObject {
             userTookOver = true
         }
         if shouldNotify {
-            overlayStatus = "Okay, it's all yours."
+            overlayStatus = String(localized: "Okay, it's all yours.")
             drivingTask?.cancel()
             onUserTookOver?(reason)
         }
@@ -541,7 +545,7 @@ public final class ClickyTakeOverController: ObservableObject {
             )
         } catch ClickyTakeOverError.busy {
             return ClickyMCPToolResult.error(
-                "HeyClicky was already driving the screen, so nothing was done for this step. Finish what you can and say what's left.",
+                "Clicky was already driving the screen, so nothing was done for this step. Finish what you can and say what's left.",
                 extra: ["status": "busy"]
             )
         } catch ClickyTakeOverError.userTookOver {

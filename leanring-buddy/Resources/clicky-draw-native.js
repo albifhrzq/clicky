@@ -609,7 +609,11 @@
     // Marks that show ink: Clicky's pieces leave invisible dots where the app acts (typeText, copyText, openPage, a
     // button's spot, handOff, sfx), so an answer that only typed or copied something drew nothing.
     const isHostSpot = m => m.do === 'dot' && m.fillAlpha === 0 && m.outline === false;
-    const inked = marks.filter(m => m && !isHostSpot(m)).length;
+    // This answer's ink only (2026-11-16, Farza: a typed follow-up on a drawing still on screen went to captions with
+    // nothing new drawn): a continued drawing's earlier marks are the last answer's, and the turn marker the app writes
+    // (__turn), an erase, an undo or a start over put no ink down. The app moves a typed answer to captions on this.
+    const putsNoInkDown = m => m.do === 'edit' && m.op && ['turn', 'erase', 'undo', 'startOver'].includes(m.op.op);
+    const inked = marks.filter((m, i) => i >= turnFirstMark && m && !isHostSpot(m) && !putsNoInkDown(m)).length;
     // A real picture (kept in the chat, and through a scroll): a card (paper, a photo, a 3D figure) or a free sketch of a
     // few strokes. Rings, pills, badges, highlights, underlines, arrows and a loose line or two only point at the screen
     // (Nilesh 2026-10-14: a circle around something was saved in the chat as a drawing).

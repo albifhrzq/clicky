@@ -15,6 +15,8 @@ public nonisolated enum ClickyInkBadgeKind: String, CaseIterable, Sendable, Equa
     case pick
     case now
     case gone
+    /// Ruled-out option marker: the list item is rendered struck through and dimmed.
+    case out
 
     public var displayTitle: String {
         switch self {
@@ -24,6 +26,7 @@ public nonisolated enum ClickyInkBadgeKind: String, CaseIterable, Sendable, Equa
         case .pick: return "pick"
         case .now: return "now"
         case .gone: return "gone"
+        case .out: return "out"
         }
     }
 }
@@ -110,6 +113,8 @@ public nonisolated enum ClickyInkBlock: Identifiable, Sendable, Equatable {
     case todo(id: String, title: String, items: [ClickyInkTodoItem])
     case status(id: String, title: String, stateLabel: String, detailInlines: [ClickyInkInlineNode])
     case progress(id: String, title: String, fraction: Double, valueLabel: String, caption: String?)
+    /// Banner built from `answer:` / `big:` / `aside:` lines between the `#` title and the first `##`.
+    case answerBanner(id: String, answer: String?, big: String?, aside: String?)
 
     public var id: String {
         switch self {
@@ -128,7 +133,8 @@ public nonisolated enum ClickyInkBlock: Identifiable, Sendable, Equatable {
              .chart(let blockID, _, _),
              .todo(let blockID, _, _),
              .status(let blockID, _, _, _),
-             .progress(let blockID, _, _, _, _):
+             .progress(let blockID, _, _, _, _),
+             .answerBanner(let blockID, _, _, _):
             return blockID
         }
     }
@@ -172,6 +178,8 @@ public nonisolated enum ClickyInkBlock: Identifiable, Sendable, Equatable {
         case (.progress(let lhsID, let lhsTitle, let lhsFraction, let lhsLabel, let lhsCaption),
               .progress(let rhsID, let rhsTitle, let rhsFraction, let rhsLabel, let rhsCaption)):
             return lhsID == rhsID && lhsTitle == rhsTitle && lhsFraction == rhsFraction && lhsLabel == rhsLabel && lhsCaption == rhsCaption
+        case (.answerBanner(let lhsID, let lhsAnswer, let lhsBig, let lhsAside), .answerBanner(let rhsID, let rhsAnswer, let rhsBig, let rhsAside)):
+            return lhsID == rhsID && lhsAnswer == rhsAnswer && lhsBig == rhsBig && lhsAside == rhsAside
         default:
             return false
         }
@@ -198,8 +206,56 @@ public nonisolated struct ClickyInkParser: Sendable {
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
         let rawLines = normalized.components(separatedBy: "\n")
-        let blocks = parseBlocks(from: rawLines, idPrefix: "root")
+        let extraction = extractAnswerBanner(from: rawLines)
+        let blocks = parseBlocks(from: extraction.remainingLines, idPrefix: "root")
+        if let banner = extraction.banner {
+            return ClickyInkDocument(blocks: [banner] + blocks)
+        }
         return ClickyInkDocument(blocks: blocks)
+    }
+
+    // MARK: - Answer Banner
+
+    /// Official note language: between the `#` title and the first `##`, lines of the form
+    /// `answer: ...`, `big: ...`, `aside: ...` form a banner shown at the top of the note.
+    /// Those lines are removed from the body; other lines in that region are kept.
+    static func extractAnswerBanner(from lines: [String]) -> (banner: ClickyInkBlock?, remainingLines: [String]) {
+        guard let titleIndex = lines.firstIndex(where: { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return trimmed.hasPrefix("# ") || trimmed == "#"
+        }) else {
+            return (nil, lines)
+        }
+
+        var answerText: String?
+        var bigText: String?
+        var asideText: String?
+        var consumedIndexes: Set<Int> = []
+        var scanIndex = titleIndex + 1
+        while scanIndex < lines.count {
+            let trimmed = lines[scanIndex].trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("#") { break }
+            for fieldName in ["answer", "big", "aside"] {
+                let fieldPrefix = fieldName + ":"
+                guard trimmed.lowercased().hasPrefix(fieldPrefix) else { continue }
+                let value = String(trimmed.dropFirst(fieldPrefix.count)).trimmingCharacters(in: .whitespaces)
+                switch fieldName {
+                case "answer": answerText = value
+                case "big": bigText = value
+                default: asideText = value
+                }
+                consumedIndexes.insert(scanIndex)
+                break
+            }
+            scanIndex += 1
+        }
+
+        guard !consumedIndexes.isEmpty else { return (nil, lines) }
+        let remainingLines = lines.enumerated()
+            .filter { entry in !consumedIndexes.contains(entry.offset) }
+            .map { entry in entry.element }
+        let banner = ClickyInkBlock.answerBanner(id: "root-answer-0", answer: answerText, big: bigText, aside: asideText)
+        return (banner, remainingLines)
     }
 
     // MARK: - Block Parsing
@@ -795,7 +851,7 @@ public nonisolated struct ClickyInkParser: Sendable {
                 }
             }
 
-            // Check inline badges: {new}, {needs}, {done}, {pick}, {now}, {gone}
+            // Check inline badges: {new}, {needs}, {done}, {pick}, {now}, {gone}, {out}
             if input[index] == "{" {
                 if let closeBrace = input[index...].firstIndex(of: "}") {
                     let tokenStart = input.index(after: index)
@@ -900,7 +956,11 @@ public nonisolated struct ClickyInkParser: Sendable {
         guard level > 0, index < trimmedLine.endIndex, trimmedLine[index] == " " else {
             return nil
         }
-        let text = String(trimmedLine[index...]).trimmingCharacters(in: .whitespaces)
+        var text = String(trimmedLine[index...]).trimmingCharacters(in: .whitespaces)
+        // `## block :: kind` - keep the heading text; the kind is a rendering hint we do not use yet.
+        if let kindSeparatorRange = text.range(of: " :: ") {
+            text = String(text[..<kindSeparatorRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+        }
         return (level, text)
     }
 

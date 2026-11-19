@@ -143,6 +143,9 @@ public struct ClickyInkSheetView: View {
         case .table(_, let headers, let rows):
             return AnyView(tableView(headers: headers, rows: rows))
 
+        case .answerBanner(_, let answerText, let bigText, let asideText):
+            return AnyView(answerBannerView(answerText: answerText, bigText: bigText, asideText: asideText))
+
         case .thematicBreak:
             return AnyView(
                 Rectangle()
@@ -800,10 +803,55 @@ public struct ClickyInkSheetView: View {
         )
     }
 
+    // MARK: - Answer Banner
+
+    private func answerBannerView(answerText: String?, bigText: String?, asideText: String?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let answerText, !answerText.isEmpty {
+                markdownTextView(answerText, fontSize: 13, fontWeight: .medium, textColor: DS.Colors.textSecondary, strikethrough: false)
+            }
+            if let bigText, !bigText.isEmpty {
+                markdownTextView(bigText, fontSize: 26, fontWeight: .bold, textColor: DS.Colors.textPrimary, strikethrough: false)
+            }
+            if let asideText, !asideText.isEmpty {
+                markdownTextView(asideText, fontSize: 11, fontWeight: .regular, textColor: DS.Colors.textTertiary, strikethrough: false)
+            }
+        }
+        .padding(DS.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DS.CornerRadius.large)
+                .fill(DS.Colors.accentText.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.CornerRadius.large)
+                .stroke(DS.Colors.accentText.opacity(0.35), lineWidth: 1)
+        )
+    }
+
     // MARK: - Inline Renderer
 
+    /// A `{out}` marker rules the whole item out: struck through and dimmed, like `{gone}`.
     @ViewBuilder
     private func inlineContentView(
+        inlines: [ClickyInkInlineNode],
+        fontSize: CGFloat,
+        fontWeight: Font.Weight = .regular,
+        textColor: Color,
+        strikethrough: Bool = false
+    ) -> some View {
+        let isRuledOut = inlines.contains(.badge(.out))
+        inlineContentViewResolved(
+            inlines: inlines,
+            fontSize: fontSize,
+            fontWeight: fontWeight,
+            textColor: isRuledOut ? DS.Colors.textTertiary : textColor,
+            strikethrough: strikethrough || isRuledOut
+        )
+    }
+
+    @ViewBuilder
+    private func inlineContentViewResolved(
         inlines: [ClickyInkInlineNode],
         fontSize: CGFloat,
         fontWeight: Font.Weight = .regular,
@@ -844,7 +892,9 @@ public struct ClickyInkSheetView: View {
                         }
 
                     case .badge(let badgeKind):
-                        ClickyInkBadgePill(kind: badgeKind)
+                        if badgeKind != .out {
+                            ClickyInkBadgePill(kind: badgeKind)
+                        }
 
                     case .ask(let label, let prompt):
                         ClickyInkActionButton(
@@ -930,7 +980,7 @@ private struct ClickyInkBadgePill: View {
         case .done: return DS.Colors.success
         case .pick: return Color(hex: "#A78BFA")
         case .now: return Color(hex: "#22D3EE")
-        case .gone: return DS.Colors.textTertiary
+        case .gone, .out: return DS.Colors.textTertiary
         }
     }
 
